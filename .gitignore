@@ -1,52 +1,23 @@
-# Prerequisites
-*.d
-
-# Object files
+*.pyc
 *.o
-*.ko
 *.obj
-*.elf
-
-# Linker output
-*.ilk
-*.map
-*.exp
-
-# Precompiled Headers
-*.gch
-*.pch
-
-# Libraries
-*.lib
-*.a
-*.la
-*.lo
-
-# Shared objects (inc. Windows DLLs)
-*.dll
-*.so
-*.so.*
-*.dylib
-
-# Executables
-*.exe
-*.out
-*.app
-*.i*86
-*.x86_64
-*.hex
-
-# Debug files
-*.dSYM/
-*.su
-*.idb
+*..iobj
 *.pdb
-
-# Kernel Module Compile Results
-*.mod*
-*.cmd
-.tmp_versions/
-modules.order
-Module.symvers
-Mkfile.old
-dkms.conf
+*.ipdb
+*.exp
+*.ilk
+.vs
+.vscode
+__pycache__
+src/**/.vscode/*
+src/**/screenshot/*
+src/**/release/*
+src/**/debug/*
+src/**/bin/*
+util/asset/**
+util/bin/**
+util/script/**
+util/src/**
+util/include/bintext.h
+util/include/winhook.h
+thirdparty/asset/**
