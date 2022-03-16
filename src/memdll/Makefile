@@ -64,13 +64,15 @@ libwinpe: libwinpe.c
 	rm -rf $(PREFIX)/*.exp
 
 win_injectmemdll_shellcodestub: win_injectmemdll.c libwinpe
-	python $@.py $< $(PREFIX)/libwinpe$(ARCH_POSTFIX)$(DLL_EXT) $(PREFIX)/_$<
+	python $@.py $< \
+		$(PREFIX)/libwinpe$(ARCH_POSTFIX)$(DLL_EXT)\
+		$(PREFIX)/_$(ARCH_POSTFIX)$<
 
 win_injectmemdll: win_injectmemdll_shellcodestub libwinpe
 	@echo \#\#building $@ ...
-	$(CC) $(PREFIX)/_$@.c -o $(PREFIX)/$@$(ARCH_POSTFIX)$(EXE_EXT)\
+	$(CC) $(PREFIX)/_$(ARCH_POSTFIX)$@.c \
+		-o $(PREFIX)/$@$(ARCH_POSTFIX)$(EXE_EXT)\
 		-llibwinpe$(ARCH_POSTFIX) \
 		$(CFLAGS) $(LDFLAGS) $(INCS) $(LIBS) $(LIBDIRS)
-	rm -rf $(PREFIX)/_$<
 
 .PHONY: all clean prepare libwinpe win_injectmemdll

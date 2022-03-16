@@ -333,18 +333,34 @@ size_t winpe_membindiat(void *mempe,
             &&  pOftThunk[j].u1.Function; j++) 
         {
             PROC addr = NULL;
-			if((pOftThunk[j].u1.Ordinal >>31) != 0x1) // use name
-			{
-				pFuncName=(PIMAGE_IMPORT_BY_NAME)(mempe +
-                    pOftThunk[j].u1.AddressOfData);
-                addr = pfnGetProcAddress(hmod, pFuncName->Name);
-
-			}
-			else // use ordinal
-			{
-				addr =GetProcAddress(hmod, 
-                (LPCSTR)(pOftThunk[j].u1.Ordinal & 0x0000ffff));
-			}
+            if(sizeof(size_t) > 4) // x64
+            {
+                if((pOftThunk[j].u1.Ordinal >> 63) != 0x1) // use name
+                {
+                    pFuncName=(PIMAGE_IMPORT_BY_NAME)(mempe +
+                        pOftThunk[j].u1.AddressOfData);
+                    addr = pfnGetProcAddress(hmod, pFuncName->Name);
+                }
+                else // use ordinal
+                {
+                    addr =pfnGetProcAddress(hmod, 
+                    (LPCSTR)(pOftThunk[j].u1.Ordinal & 0x000000000000ffff));
+                }
+            }
+            else // x86
+            {
+                if((pOftThunk[j].u1.Ordinal >>31) != 0x1) // use name
+                {
+                    pFuncName=(PIMAGE_IMPORT_BY_NAME)(mempe +
+                        pOftThunk[j].u1.AddressOfData);
+                    addr = pfnGetProcAddress(hmod, pFuncName->Name);
+                }
+                else // use ordinal
+                {
+                    addr =pfnGetProcAddress(hmod, 
+                    (LPCSTR)(pOftThunk[j].u1.Ordinal & 0x0000ffff));
+                }
+            }
             if(!addr) return 0;
             pFtThunk[j].u1.Function = (size_t)addr;
             iat_count++;
@@ -385,13 +401,26 @@ size_t winpe_memfindiat(void *mempe,
         for (int j=0; pFtThunk[j].u1.Function 
             &&  pOftThunk[j].u1.Function; j++) 
         {
-			if((pOftThunk[j].u1.Ordinal >>31) != 0x1) // use name
-			{
-				pFuncName=(PIMAGE_IMPORT_BY_NAME)(mempe +
-                    pOftThunk[j].u1.AddressOfData);
-                if(_stricmp(pFuncName->Name, funcname)==0) 
-                    return (size_t)&pFtThunk[j] - (size_t)mempe;
-			}
+            if(sizeof(size_t) > 4) // x64
+            {
+                if((pOftThunk[j].u1.Ordinal >>63) != 0x1) // use name
+                {
+                    pFuncName=(PIMAGE_IMPORT_BY_NAME)(mempe +
+                        pOftThunk[j].u1.AddressOfData);
+                    if(_stricmp(pFuncName->Name, funcname)==0) 
+                        return (size_t)&pFtThunk[j] - (size_t)mempe;
+                }
+            }
+            else // x86
+            {
+                if((pOftThunk[j].u1.Ordinal >>31) != 0x1) // use name
+                {
+                    pFuncName=(PIMAGE_IMPORT_BY_NAME)(mempe +
+                        pOftThunk[j].u1.AddressOfData);
+                    if(_stricmp(pFuncName->Name, funcname)==0) 
+                        return (size_t)&pFtThunk[j] - (size_t)mempe;
+                }
+            }
         }
     }
     return 0;

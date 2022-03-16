@@ -1,6 +1,6 @@
 /* 
     a tool to attach a dll inside a pe file
-    v0.1, developed by devseed
+    v0.2, developed by devseed
 */
 
 #include <stdio.h>
@@ -135,7 +135,7 @@ int main(int argc, char *argv[])
     if(argc < 3)
     {
         printf("usage: win_injectmemdll exepath dllpath [outpath]\n");
-        printf("v0.1, developed by devseed\n");
+        printf("v0.2, developed by devseed\n");
         return 0;
     }
 

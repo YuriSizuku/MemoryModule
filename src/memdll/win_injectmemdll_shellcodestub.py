@@ -60,6 +60,56 @@ def gen_oepshellcode32():
 
 def gen_oepshellcode64():
    ks = Ks(KS_ARCH_X86, KS_MODE_64)
+   code_str = f"""
+      // for relative address, get the base of addr
+      call geteip; 
+      lea rbx, [rax-5];
+      push rcx;
+      push rdx;
+      push r8;
+      push r9;
+
+      // bind iat
+      lea r8, [rbx + exegetprocessaddress];
+      mov r8, [r8]; // iat
+      mov r8, [r8]; // iat->addr
+      lea rdx, [rbx + exeloadlibrarya];
+      mov rdx, [rdx]; // iat
+      mov rdx, [rdx]; // iat->addr
+      lea rcx, [rbx + dllbase]; // dllbase addr
+      mov rcx, [rcx]; // dllbase value
+      call [rbx + memiatbind];
+      
+      // call dll oep, for dll entry
+      xor r8, r8; // lpvReserved
+      xor rdx, rdx; 
+      inc rdx; // fdwReason, DLL_PROCESS_ATTACH
+      lea rcx, [rbx + dllbase];
+      mov rcx, [rcx]; // hinstDLL
+      call [rbx+dlloepva];
+
+      // jmp to origin oep
+      pop r9;
+      pop r8;
+      pop rdx;
+      pop rcx;
+      jmp [rbx+exeoepva];
+
+      geteip:
+      mov rax, [rsp]
+      ret
+
+      exeoepva: nop;nop;nop;nop;nop;nop;nop;nop;
+      dllbase: nop;nop;nop;nop;nop;nop;nop;nop;
+      dlloepva: nop;nop;nop;nop;nop;nop;nop;nop;
+      memiatbind: nop;nop;nop;nop;nop;nop;nop;nop;
+      exeloadlibrarya: nop;nop;nop;nop;nop;nop;nop;nop;
+      exegetprocessaddress: nop;nop;nop;nop;nop;nop;nop;nop;
+      """
+   print("gen_oepshellcode64", code_str)
+   payload, _ = ks.asm(code_str)
+   print("payload: ", [hex(x) for x in payload])
+   return payload
    pass
 
 def inject_shellcodestubs(srcpath, libwinpepath, targetpath):
@@ -71,7 +121,7 @@ def inject_shellcodestubs(srcpath, libwinpepath, targetpath):
    memiatshellcode = \
       pedll.get_content_from_virtual_address(
          memiatfunc.address, 0x200)
-   memiatshellcode = memiatshellcode[:memiatshellcode.index(0xC3)+1] # retn
+   # memiatshellcode = memiatshellcode[:memiatshellcode.index(0xC3)+1] # retn
 
    if pedll_oph.magic == lief.PE.PE_TYPE.PE32_PLUS:
       oepshellcode = gen_oepshellcode64()
@@ -98,7 +148,7 @@ def inject_shellcodestubs(srcpath, libwinpepath, targetpath):
 
 def debug():
    inject_shellcodestubs("win_injectmemdll.c", 
-      "./bin/libwinpe32.dll", 
+      "./bin/libwinpe64.dll", 
       "./bin/_win_injectmemdll.c")
    pass
 
@@ -111,6 +161,6 @@ def main():
    pass
 
 if __name__ == "__main__":
-   debug()
-   #main()
+   #debug()
+   main()
    pass
