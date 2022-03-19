@@ -7,7 +7,7 @@ import sys
 import lief
 from keystone import Ks, KS_ARCH_X86, KS_MODE_32, KS_MODE_64
 
-def gen_oepshellcode32():
+def gen_oepinit_code32():
    ks = Ks(KS_ARCH_X86, KS_MODE_32)
    code_str = f"""
       // for relative address, get the base of addr
@@ -15,6 +15,7 @@ def gen_oepshellcode32():
       lea ebx, [eax-5];
 
       // bind iat
+      push eax; // rvaaddr = 0
       lea eax, [ebx + exegetprocessaddress];
       mov eax, [eax]; // iat
       mov eax, [eax]; // iat->addr
@@ -27,7 +28,7 @@ def gen_oepshellcode32():
       mov eax, [eax]; // dllbase value
       push eax;
       call [ebx + memiatbind];
-      add esp, 0xC;
+      add esp, 0x10;
       
       // call dll oep, for dll entry
       xor eax, eax; 
@@ -53,12 +54,12 @@ def gen_oepshellcode32():
       exeloadlibrarya: nop;nop;nop;nop;
       exegetprocessaddress: nop;nop;nop;nop;
       """
-   print("gen_oepshellcode32", code_str)
+   print("gen_oepinit_code32", code_str)
    payload, _ = ks.asm(code_str)
    print("payload: ", [hex(x) for x in payload])
    return payload
 
-def gen_oepshellcode64():
+def gen_oepinit_code64():
    ks = Ks(KS_ARCH_X86, KS_MODE_64)
    code_str = f"""
       // for relative address, get the base of addr
@@ -71,8 +72,7 @@ def gen_oepshellcode64():
 
       // bind iat
       lea r8, [rbx + exegetprocessaddress];
-      mov r8, [r8]; // iat
-      mov r8, [r8]; // iat->addr
+      mov r8, [r8]; // winpe_memfindexp
       lea rdx, [rbx + exeloadlibrarya];
       mov rdx, [rdx]; // iat
       mov rdx, [rdx]; // iat->addr
@@ -106,7 +106,7 @@ def gen_oepshellcode64():
       exeloadlibrarya: nop;nop;nop;nop;nop;nop;nop;nop;
       exegetprocessaddress: nop;nop;nop;nop;nop;nop;nop;nop;
       """
-   print("gen_oepshellcode64", code_str)
+   print("gen_oepinit_code64", code_str)
    payload, _ = ks.asm(code_str)
    print("payload: ", [hex(x) for x in payload])
    return payload
@@ -115,41 +115,58 @@ def gen_oepshellcode64():
 def inject_shellcodestubs(srcpath, libwinpepath, targetpath):
    pedll = lief.parse(libwinpepath)
    pedll_oph = pedll.optional_header
-   memiatfunc = next(filter(
-      lambda e : e.name == "winpe_membindiat", 
-      pedll.exported_functions))
-   memiatshellcode = \
-      pedll.get_content_from_virtual_address(
-         memiatfunc.address, 0x200)
-   # memiatshellcode = memiatshellcode[:memiatshellcode.index(0xC3)+1] # retn
-
+   
+   # generate oepint shellcode
    if pedll_oph.magic == lief.PE.PE_TYPE.PE32_PLUS:
-      oepshellcode = gen_oepshellcode64()
+      oepinit_code = gen_oepinit_code64()
       pass
    elif pedll_oph.magic == lief.PE.PE_TYPE.PE32:
-      oepshellcode = gen_oepshellcode32()
+      oepinit_code = gen_oepinit_code32()
       pass
    else:
       print("error invalid pe magic!", pedll_oph.magic)
       return
+   # if len(oepinit_code) < 0x200: oepinit_code.extend([0x00] * (0x200 - len(oepinit_code)))
+   
+   # find necessary functions
+   membindiat_func = next(filter(
+      lambda e : e.name == "winpe_membindiat", 
+      pedll.exported_functions))
+   membindiat_code = \
+      pedll.get_content_from_virtual_address(
+         membindiat_func.address, 0x200)
+   # memiatshellcode = memiatshellcode[:memiatshellcode.index(0xC3)+1] # retn
+   try: 
+      memfindexp_func = next(filter(
+         lambda e : e.name == "winpe_memfindexp", # x64 stdcall name
+         pedll.exported_functions))
+   except StopIteration:
+      memfindexp_func = next(filter(
+         lambda e : e.name == "_winpe_memfindexp@8", # x86 stdcall name
+         pedll.exported_functions))
+   memfindexp_code = \
+      pedll.get_content_from_virtual_address(
+         memfindexp_func.address, 0x200)
 
+   # write shellcode to c source file
    with open(srcpath, "rb") as fp:
       srctext = fp.read().decode('utf8')
-
-   _codetext = ",".join([hex(x) for x in oepshellcode])
-   srctext = re.sub(r"g_oepshellcode(.+?)(\{0x90\})", 
-      r"g_oepshellcode\1{" + _codetext +"}", srctext)
-   _codetext = ",".join([hex(x) for x in memiatshellcode])
-   srctext = re.sub(r"g_memiatshellcode(.+?)(\{0x90\})", 
-      r"g_memiatshellcode\1{" + _codetext +"}", srctext)
-
+   _codetext = ",".join([hex(x) for x in oepinit_code])
+   srctext = re.sub(r"g_oepinit_code(.+?)(\{0x90\})", 
+      r"g_oepinit_code\1{" + _codetext +"}", srctext)
+   _codetext = ",".join([hex(x) for x in membindiat_code])
+   srctext = re.sub(r"g_membindiat_code(.+?)(\{0x90\})", 
+      r"g_membindiat_code\1{" + _codetext +"}", srctext)
+   _codetext = ",".join([hex(x) for x in memfindexp_code])
+   srctext = re.sub(r"g_memfindexp_code(.+?)(\{0x90\})", 
+      r"g_memfindexp_code\1{" + _codetext +"}", srctext)
    with open(targetpath, "wb") as fp:
       fp.write(srctext.encode('utf8'))
 
 def debug():
    inject_shellcodestubs("win_injectmemdll.c", 
       "./bin/libwinpe64.dll", 
-      "./bin/_win_injectmemdll.c")
+      "./bin/_64win_injectmemdll.c")
    pass
 
 def main():

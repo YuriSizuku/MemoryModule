@@ -61,7 +61,6 @@ libwinpe: libwinpe.c
 	@echo \#\#building $@ ...
 	$(CC) $< -o $(PREFIX)/$@$(ARCH_POSTFIX)$(DLL_EXT) \
 		-shared $(CFLAGS) $(LDFLAGS) $(INCS) $(LIBS) $(LIBDIRS)
-	rm -rf $(PREFIX)/*.exp
 
 win_injectmemdll_shellcodestub: win_injectmemdll.c libwinpe
 	python $@.py $< \
@@ -73,6 +72,7 @@ win_injectmemdll: win_injectmemdll_shellcodestub libwinpe
 	$(CC) $(PREFIX)/_$(ARCH_POSTFIX)$@.c \
 		-o $(PREFIX)/$@$(ARCH_POSTFIX)$(EXE_EXT)\
 		-llibwinpe$(ARCH_POSTFIX) \
+		-Wno-undefined-inline \
 		$(CFLAGS) $(LDFLAGS) $(INCS) $(LIBS) $(LIBDIRS)
 
 .PHONY: all clean prepare libwinpe win_injectmemdll

@@ -14,6 +14,7 @@ src/**/screenshot/*
 src/**/release/*
 src/**/debug/*
 src/**/bin/*
+src/**/sample/*
 util/asset/**
 util/bin/**
 util/script/**
