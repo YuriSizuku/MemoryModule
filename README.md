@@ -2,6 +2,8 @@
 A tool to parse and load module in memory, as well as attach a DLL in EXE.
 Most of the functions are inline, so that it can also be used in shellcode.
 
+This project is tested on `windows  xp `,  `windows 7`,  `windows 10`,  `windows 11`.
+
 ## compile
 
 ```shell
@@ -121,6 +123,6 @@ See `winpe.h`  for parsing and loading PE structure in detail.
 
 ## known issues
 
-* ~~attach x64 DLL to exe crash on calling some windows API~~
+* ~~attach x64 DLL to exe crash on calling some windows API~~  
   problem occured  by `movaps xmm0, xmmword ptr ss:[rsp]`
   fixed by stack memory align with 0x10
