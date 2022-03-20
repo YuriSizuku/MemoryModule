@@ -5,7 +5,8 @@
    history:
       v0.1, initial version
       v0.2, add more function for shellcode
-      v0.3, x86 and x64 no need to use exe's LoadLibraryA 
+      v0.3, x86 and x64 no need to use exe's LoadLibraryA
+      v0.3.1, fix x64 attach dll crash by align stack with 0x10
 """
 import re
 import sys
@@ -71,6 +72,7 @@ def gen_oepinit_code64():
       push rdx;
       push r8;
       push r9;
+      sub rsp, 0x28; // this is for memory 0x10 align
 
       // bind iat
       lea rdx, [rbx + findloadlibrarya];
@@ -91,6 +93,7 @@ def gen_oepinit_code64():
       call [rbx+dlloepva];
 
       // jmp to origin oep
+      add rsp, 0x28;
       pop r9;
       pop r8;
       pop rdx;
