@@ -1,3 +1,5 @@
+# make -j12 ARCH=i686 && make -j12 ARCH=i686 DEBUG=1
+# make -j12 ARCH=x86_64 && make -j12 ARCH=x86_64 DEBUG=1
 LIBPREFIX?=./../../
 ARCH?=i686
 PREFIX?=./bin
@@ -60,7 +62,8 @@ prepare:
 libwinpe: libwinpe.c
 	@echo \#\#building $@ ...
 	$(CC) $< -o $(PREFIX)/$@$(ARCH_POSTFIX)$(DLL_EXT) \
-		-shared $(CFLAGS) $(LDFLAGS) $(INCS) $(LIBS) $(LIBDIRS)
+		-shared -Wl,/DEF:$@.def\
+		$(CFLAGS) $(LDFLAGS) $(INCS) $(LIBS) $(LIBDIRS)
 
 win_injectmemdll_shellcodestub: win_injectmemdll.c libwinpe
 	python $@.py $< \

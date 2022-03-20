@@ -1,6 +1,11 @@
 """
    this file is for automaticly generate some shellcodes stub informations
-   v0.1, developed by devseed
+   v0.3, developed by devseed
+   
+   history:
+      v0.1, initial version
+      v0.2, add more function for shellcode
+      v0.3, x86 and x64 no need to use exe's LoadLibraryA 
 """
 import re
 import sys
@@ -15,20 +20,17 @@ def gen_oepinit_code32():
       lea ebx, [eax-5];
 
       // bind iat
-      push eax; // rvaaddr = 0
-      lea eax, [ebx + exegetprocessaddress];
-      mov eax, [eax]; // iat
-      mov eax, [eax]; // iat->addr
+      lea eax, [ebx + getprocessaddress];
+      mov eax, [eax];
       push eax; 
-      lea eax, [ebx + exeloadlibrarya];
-      mov eax, [eax]; // iat
-      mov eax, [eax]; // iat->addr
+      lea eax, [ebx + findloadlibrarya];
+      call [eax]; 
       push eax;
       lea eax, [ebx + dllbase]; // dllbase addr
       mov eax, [eax]; // dllbase value
       push eax;
       call [ebx + memiatbind];
-      add esp, 0x10;
+      add esp, 0xc;
       
       // call dll oep, for dll entry
       xor eax, eax; 
@@ -51,8 +53,8 @@ def gen_oepinit_code32():
       dllbase: nop;nop;nop;nop;
       dlloepva: nop;nop;nop;nop;
       memiatbind: nop;nop;nop;nop;
-      exeloadlibrarya: nop;nop;nop;nop;
-      exegetprocessaddress: nop;nop;nop;nop;
+      findloadlibrarya: nop;nop;nop;nop;
+      getprocessaddress: nop;nop;nop;nop;
       """
    print("gen_oepinit_code32", code_str)
    payload, _ = ks.asm(code_str)
@@ -71,13 +73,13 @@ def gen_oepinit_code64():
       push r9;
 
       // bind iat
-      lea r8, [rbx + exegetprocessaddress];
-      mov r8, [r8]; // winpe_memfindexp
-      lea rdx, [rbx + exeloadlibrarya];
-      mov rdx, [rdx]; // iat
-      mov rdx, [rdx]; // iat->addr
-      lea rcx, [rbx + dllbase]; // dllbase addr
-      mov rcx, [rcx]; // dllbase value
+      lea rdx, [rbx + findloadlibrarya];
+      call [rdx]; 
+      mov rdx, rax; // arg2, loadlibraryas
+      lea r8, [rbx + getprocessaddress];
+      mov r8, [r8]; // arg3, getprocaddress
+      lea rcx, [rbx + dllbase];
+      mov rcx, [rcx]; // arg1, dllbase value
       call [rbx + memiatbind];
       
       // call dll oep, for dll entry
@@ -103,14 +105,13 @@ def gen_oepinit_code64():
       dllbase: nop;nop;nop;nop;nop;nop;nop;nop;
       dlloepva: nop;nop;nop;nop;nop;nop;nop;nop;
       memiatbind: nop;nop;nop;nop;nop;nop;nop;nop;
-      exeloadlibrarya: nop;nop;nop;nop;nop;nop;nop;nop;
-      exegetprocessaddress: nop;nop;nop;nop;nop;nop;nop;nop;
+      findloadlibrarya: nop;nop;nop;nop;nop;nop;nop;nop;
+      getprocessaddress: nop;nop;nop;nop;nop;nop;nop;nop;
       """
    print("gen_oepinit_code64", code_str)
    payload, _ = ks.asm(code_str)
    print("payload: ", [hex(x) for x in payload])
    return payload
-   pass
 
 def inject_shellcodestubs(srcpath, libwinpepath, targetpath):
    pedll = lief.parse(libwinpepath)
@@ -129,37 +130,26 @@ def inject_shellcodestubs(srcpath, libwinpepath, targetpath):
    # if len(oepinit_code) < 0x200: oepinit_code.extend([0x00] * (0x200 - len(oepinit_code)))
    
    # find necessary functions
-   membindiat_func = next(filter(
-      lambda e : e.name == "winpe_membindiat", 
-      pedll.exported_functions))
-   membindiat_code = \
-      pedll.get_content_from_virtual_address(
-         membindiat_func.address, 0x200)
-   # memiatshellcode = memiatshellcode[:memiatshellcode.index(0xC3)+1] # retn
-   try: 
-      memfindexp_func = next(filter(
-         lambda e : e.name == "winpe_memfindexp", # x64 stdcall name
+   FUNC_SIZE =0x400
+   codes = {"winpe_memreloc": 0, 
+      "winpe_membindiat": 0, 
+      "winpe_findloadlibrarya": 0, 
+      "winpe_memGetProcAddress": 0}
+   for k in codes.keys():
+      func = next(filter(lambda e : e.name == k, 
          pedll.exported_functions))
-   except StopIteration:
-      memfindexp_func = next(filter(
-         lambda e : e.name == "_winpe_memfindexp@8", # x86 stdcall name
-         pedll.exported_functions))
-   memfindexp_code = \
-      pedll.get_content_from_virtual_address(
-         memfindexp_func.address, 0x200)
-
+      codes[k] = pedll.get_content_from_virtual_address(
+         func.address, FUNC_SIZE)
+   codes['winpe_oepinit'] = oepinit_code
+   
    # write shellcode to c source file
    with open(srcpath, "rb") as fp:
       srctext = fp.read().decode('utf8')
-   _codetext = ",".join([hex(x) for x in oepinit_code])
-   srctext = re.sub(r"g_oepinit_code(.+?)(\{0x90\})", 
-      r"g_oepinit_code\1{" + _codetext +"}", srctext)
-   _codetext = ",".join([hex(x) for x in membindiat_code])
-   srctext = re.sub(r"g_membindiat_code(.+?)(\{0x90\})", 
-      r"g_membindiat_code\1{" + _codetext +"}", srctext)
-   _codetext = ",".join([hex(x) for x in memfindexp_code])
-   srctext = re.sub(r"g_memfindexp_code(.+?)(\{0x90\})", 
-      r"g_memfindexp_code\1{" + _codetext +"}", srctext)
+   for k, v in codes.items():
+      k = k.replace("winpe_", "")
+      _codetext = ",".join([hex(x) for x in v])
+      srctext = re.sub("g_" + k + r"_code(.+?)(\{0x90\})", 
+         "g_" + k  +  r"_code\1{" + _codetext +"}", srctext)
    with open(targetpath, "wb") as fp:
       fp.write(srctext.encode('utf8'))
 
@@ -178,6 +168,6 @@ def main():
    pass
 
 if __name__ == "__main__":
-   #debug()
+   # debug()
    main()
    pass

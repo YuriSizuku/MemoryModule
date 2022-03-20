@@ -1,6 +1,10 @@
 /* 
-    a tool to attach a dll inside a pe file
-    v0.2, developed by devseed
+  a tool to attach a dll inside a pe file
+  v0.3, developed by devseed
+
+  history: 
+    v0.2, support for x86
+    v0.3, add test part, support for x64, optimizing code structure
 */
 
 #include <stdio.h>
@@ -13,15 +17,30 @@
    fclose(_fp)
 
 // these functions are stub function, will be filled by python
+#define FUNC_SIZE 0x400
+#define SHELLCODE_SIZE 0X2000
 unsigned char g_oepinit_code[] = {0x90};
+unsigned char g_memreloc_code[] = {0x90};
 unsigned char g_membindiat_code[] = {0x90};
-unsigned char g_memfindexp_code[] = {0x90};
+unsigned char g_findloadlibrarya_code[] = {0x90};
+unsigned char g_memGetProcAddress_code[] = {0x90};
 
-void _oepshellcode(void *mempe_exe, void *mempe_dll, 
-    void *shellcode, PIMAGE_SECTION_HEADER psecth, DWORD orgoeprva)
+size_t _sectpaddingsize(void *mempe, void *mempe_dll, size_t align)
+{
+    PIMAGE_DOS_HEADER pDosHeader = (PIMAGE_DOS_HEADER)mempe;
+    PIMAGE_NT_HEADERS  pNtHeader = (PIMAGE_NT_HEADERS)
+        ((void*)mempe + pDosHeader->e_lfanew);
+    PIMAGE_FILE_HEADER pFileHeader = &pNtHeader->FileHeader;
+    PIMAGE_OPTIONAL_HEADER pOptHeader = &pNtHeader->OptionalHeader;
+    size_t _v = (pOptHeader->SizeOfImage + SHELLCODE_SIZE) % align;
+    if (_v) return align - _v;
+    else return 0;
+}
+
+void _oepshellcode(void *mempe_exe, void *mempe_dll, void *shellcode, 
+    size_t shellcodebase, size_t dllimagebase, DWORD orgoeprva)
 {
     // PE struct declear
-#define FUNC_SIZE 0x200
     void *mempe;
     PIMAGE_DOS_HEADER pDosHeader;
     PIMAGE_NT_HEADERS  pNtHeader;
@@ -37,14 +56,16 @@ void _oepshellcode(void *mempe_exe, void *mempe_dll,
 
     // bind the pointer to buffer
     size_t oepinit_end = sizeof(g_oepinit_code);
-    size_t memiatbind_start = FUNC_SIZE;
-    size_t memfindexp_start = memiatbind_start + FUNC_SIZE;
+    size_t memreloc_start = FUNC_SIZE;
+    size_t memiatbind_start = memreloc_start + FUNC_SIZE;
+    size_t memfindloadlibrarya_start = memiatbind_start + FUNC_SIZE;
+    size_t memGetProcAddress_start = memfindloadlibrarya_start + FUNC_SIZE;
     size_t *pexeoepva = (size_t*)(g_oepinit_code + oepinit_end - 6*sizeof(size_t));
     size_t *pdllbase = (size_t*)(g_oepinit_code + oepinit_end - 5*sizeof(size_t));
     size_t *pdlloepva = (size_t*)(g_oepinit_code + oepinit_end - 4*sizeof(size_t));
     size_t *pmemiatbind = (size_t*)(g_oepinit_code + oepinit_end - 3*sizeof(size_t));
-    size_t *pexeloadlibrarya = (size_t*)(g_oepinit_code + oepinit_end - 2*sizeof(size_t));
-    size_t *pexegetprocessaddress = (size_t*)(g_oepinit_code + oepinit_end - 1*sizeof(size_t));
+    size_t *pfindloadlibrarya = (size_t*)(g_oepinit_code + oepinit_end - 2*sizeof(size_t));
+    size_t *pgetprocessaddress = (size_t*)(g_oepinit_code + oepinit_end - 1*sizeof(size_t));
 
     // get the information of exe
     mempe = mempe_exe;
@@ -56,7 +77,6 @@ void _oepshellcode(void *mempe_exe, void *mempe_dll,
     pImpEntry =  &pDataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT];
     pImpDescriptor = (PIMAGE_IMPORT_DESCRIPTOR)(mempe + pImpEntry->VirtualAddress);
     size_t exeimagebase = pOptHeader->ImageBase;
-    size_t shellcodebase = exeimagebase + psecth->VirtualAddress; 
 
     // get the information of dll
     mempe = mempe_dll;
@@ -65,7 +85,6 @@ void _oepshellcode(void *mempe_exe, void *mempe_dll,
     pFileHeader = &pNtHeader->FileHeader;
     pOptHeader = &pNtHeader->OptionalHeader;
     pDataDirectory = pOptHeader->DataDirectory;
-    size_t dllimagebase = pOptHeader->ImageBase;
     DWORD dlloeprva = pOptHeader->AddressOfEntryPoint;
 
     // fill the address table
@@ -73,22 +92,22 @@ void _oepshellcode(void *mempe_exe, void *mempe_dll,
     *pdllbase =  dllimagebase;
     *pdlloepva = dllimagebase + pOptHeader->AddressOfEntryPoint;
     *pmemiatbind = shellcodebase + memiatbind_start;
-    *pexeloadlibrarya = exeimagebase + 
-        (size_t)(winpe_memfindiat(mempe_exe, 
-            "kernel32.dll", "LoadLibraryA") - mempe_exe);
-    *pexegetprocessaddress = sizeof(size_t) > 4 ?
-         shellcodebase + memfindexp_start : // x64
-         exeimagebase + (size_t)(winpe_memfindiat(mempe_exe, // x86
-            "kernel32.dll", "GetProcAddress") - mempe_exe);
+    *pfindloadlibrarya = shellcodebase + memfindloadlibrarya_start;
+    *pgetprocessaddress = shellcodebase + memGetProcAddress_start;
 
     // copy to the target
     memcpy(shellcode , g_oepinit_code, sizeof(g_oepinit_code));
+    memcpy(shellcode + memreloc_start, 
+        g_memreloc_code, sizeof(g_memreloc_code));
     memcpy(shellcode + memiatbind_start, 
         g_membindiat_code, sizeof(g_membindiat_code));
-    memcpy(shellcode + memfindexp_start, 
-        g_memfindexp_code, sizeof(g_memfindexp_code));
+    memcpy(shellcode + memfindloadlibrarya_start, 
+        g_findloadlibrarya_code, sizeof(g_findloadlibrarya_code));
+    memcpy(shellcode + memGetProcAddress_start, 
+        g_memGetProcAddress_code, sizeof(g_memGetProcAddress_code));
 }
 
+// memory structure: [exe sections], [shellcode, padding, dll]
 int injectdll_mem(const char *exepath, 
     const char *dllpath, const char *outpath)
 {
@@ -102,7 +121,6 @@ int injectdll_mem(const char *exepath,
     size_t overlay_exesize = 0;
     size_t imgbase_exe = 0;
     IMAGE_SECTION_HEADER secth = {0};
-    #define SHELLCODE_SIZE 0X1000
     char shellcode[SHELLCODE_SIZE];
 
     // load exe and dll pe 
@@ -117,22 +135,30 @@ int injectdll_mem(const char *exepath,
     PIMAGE_OPTIONAL_HEADER pOptHeader = &pNtHeader->OptionalHeader;
     imgbase_exe = pOptHeader->ImageBase;
 
-    // append the dll section and adjust
+    // append section header to exe
+    size_t align = sizeof(size_t) > 4 ? 0x10000: 0x1000; 
+    size_t padding = _sectpaddingsize(mempe_exe, mempe_dll, align);
     secth.Characteristics = IMAGE_SCN_MEM_READ | 
         IMAGE_SCN_MEM_WRITE | IMAGE_SCN_MEM_EXECUTE;
-    secth.Misc.VirtualSize = mempe_dllsize + SHELLCODE_SIZE;
-    secth.SizeOfRawData = mempe_dllsize + SHELLCODE_SIZE;
+    secth.Misc.VirtualSize = SHELLCODE_SIZE + padding + mempe_dllsize;
+    secth.SizeOfRawData = SHELLCODE_SIZE + padding + mempe_dllsize;
     strcpy((char*)secth.Name, ".module");
     winpe_noaslr(mempe_exe);
     winpe_appendsecth(mempe_exe, &secth);
+
+    // adjust dll addr and append shellcode, iatbind is in runing
     DWORD orgoeprva = winpe_oepval(mempe_exe, secth.VirtualAddress);
-    winpe_memreloc(mempe_dll, imgbase_exe + secth.VirtualAddress + SHELLCODE_SIZE);
-    _oepshellcode(mempe_exe, mempe_dll, shellcode, &secth, orgoeprva);
+    size_t shellcodebase = imgbase_exe + secth.VirtualAddress;
+    size_t dllimagebase = shellcodebase + SHELLCODE_SIZE + padding;
+    _oepshellcode(mempe_exe, mempe_dll, shellcode, 
+        shellcodebase, dllimagebase, orgoeprva);
+    winpe_memreloc(mempe_dll, dllimagebase);
 
     // write data to new exe
     FILE *fp = fopen(outpath, "wb");
     fwrite(mempe_exe, 1, mempe_exesize, fp);
     fwrite(shellcode, 1, SHELLCODE_SIZE, fp);
+    for(int i=0;i<padding;i++) fputc(0x0, fp);
     fwrite(mempe_dll, 1, mempe_dllsize, fp);
     if(overlay_exe) fwrite(overlay_exe, 1, overlay_exesize, fp);
     fclose(fp);
@@ -143,37 +169,55 @@ int injectdll_mem(const char *exepath,
     return 0;
 }
 
+void test_getfunc(HMODULE hmod, const char *funcname)
+{
+    size_t expva = (size_t)GetProcAddress(hmod, funcname);
+    size_t exprva = (size_t)winpe_memfindexp(hmod, funcname) - (size_t)hmod;
+    void *func = winpe_memforwardexp(hmod, exprva, 
+        LoadLibraryA, (PFN_GetProcAddress)winpe_memfindexp);
+    void *func2 = winpe_memGetProcAddress(hmod, funcname);
+    assert(exprva!=0 && (size_t)func==expva  
+        && func!=NULL && func2==func);
+    printf("test_getfunc %p %s passed!\n", hmod, funcname);
+}
+
 void test_exp()
 {
     // test loadlibrary, getprocaddress
-    HMODULE hmod = NULL;
-    size_t exprva = 0;
-    size_t expva = 0;
-    void* func = NULL;
-
+    HMODULE hmod = NULL, hmod2 = NULL, hmod3 = NULL;
     hmod = LoadLibraryA("kernel32.dll");
-    assert(hmod!=NULL);
-    expva = (size_t)GetProcAddress(hmod, "LoadLibraryA");
-    exprva = (size_t)winpe_memfindexp(hmod, "LoadLibraryA") - (size_t)hmod;
-    func = winpe_memforwardexp(hmod, exprva, LoadLibraryA, (PFN_GetProcAddress)winpe_memfindexp);
-    assert(exprva!=0 && (size_t)func==expva  && func!=NULL);
-    expva = (size_t)GetProcAddress(hmod, "InitializeSListHead");
-    exprva = (size_t)winpe_memfindexp(hmod, "InitializeSListHead") - (size_t)hmod;
-    func = winpe_memforwardexp(hmod, exprva, LoadLibraryA, (PFN_GetProcAddress)winpe_memfindexp);
-    assert(exprva!=0 && (size_t)func==expva  && func!=NULL);
-    expva = (size_t)GetProcAddress(hmod, "GetSystemTimeAsFileTime");
-    exprva = (size_t)winpe_memfindexp(hmod, "GetSystemTimeAsFileTime") - (size_t)hmod;
-    func = winpe_memforwardexp(hmod, exprva, LoadLibraryA, (PFN_GetProcAddress)winpe_memfindexp);
-    assert(exprva!=0 && (size_t)func==expva  && func!=NULL);
+    hmod2 = winpe_findkernel32();
+    hmod3 = winpe_findmodulea("kernel32.dll");
+    assert(hmod!=NULL && hmod==hmod2 && hmod==hmod3);
+    printf("winpe_findkernel32, winpe_findmodulea(kernel32) %p passed!\n", hmod);
+    hmod3 = winpe_findmodulea("invalid.dll");
+    assert(hmod3==NULL);
+    test_getfunc(hmod, "LoadLibraryA");
+    test_getfunc(hmod, "InitializeSListHead");
+    test_getfunc(hmod, "GetSystemTimeAsFileTime");
+    printf("test_exp passed!\n\n");
 }
 
 void test_memdll(char *dllpath)
 {
     size_t mempesize = 0;
+    void *memdll = NULL;
     void *mempe = winpe_memload_file(dllpath, &mempesize, TRUE);;
     assert(mempe!=0 && mempesize!=0);
-    winpe_membindiat(mempe, LoadLibraryA, (PFN_GetProcAddress)winpe_memfindexp);
-    winpe_memLoadLibrary(mempe);
+    memdll = winpe_memLoadLibrary(mempe);
+    assert(memdll!=0);
+    printf("winpe_memLoadLibrary, load at %p passed!\n", memdll);
+    winpe_memFreeLibrary(memdll);
+    
+    size_t targetaddr = sizeof(size_t) > 4 ? 0x140030000: 0x90000;
+    memdll = winpe_memLoadLibraryEx(memdll, targetaddr, 
+        WINPE_LDFLAG_MEMALLOC, (PFN_LoadLibraryA)winpe_findloadlibrarya(), 
+        (PFN_GetProcAddress)winpe_memGetProcAddress);
+    assert((size_t)memdll==targetaddr);
+    printf("winpe_memLoadLibraryEx, load at %p passed!\n", memdll);
+    winpe_memFreeLibrary(memdll);
+
+    printf("test_memdll %s passed]\n\n", dllpath);
     free(mempe);
 }
 

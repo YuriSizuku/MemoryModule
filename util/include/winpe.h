@@ -1,16 +1,18 @@
 /*
-  winpe.h, by devseed, v0.2.2
+  winpe.h, by devseed, v0.3.2
   for parsing windows pe structure, adjust realoc addrs, or iat
-  this function for shellcode should only use release version
+  most functions are single by inline all parts, 
+  can be also used as shellcode
 
   history:
-  v0.1 initial version, with load pe in memory align
-  V0.1.2 adjust declear name, load pe iat
-  v0.2 add append section, findiat function
-  v0.2.2 add function winpe_memfindexp
-  v0.2.5 inline basic functions, better for shellcode
-  v0.3 add winpe_memloadlibrary, winpe_memgetprocaddress, winpe_memfreelibrary
-
+    v0.1, initial version, with load pe in memory align
+    V0.1.2, adjust declear name, load pe iat
+    v0.2, add append section, findiat function
+    v0.2.2, add function winpe_memfindexp
+    v0.2.5, inline basic functions, better for shellcode
+    v0.3, add winpe_memloadlibrary, winpe_memGetprocaddress, winpe_memFreelibrary
+    v0.3.1, fix the stdcall function name by .def, load memory moudule aligned with 0x1000(x86), 0x10000(x64)
+    v0.3.2, x64 memory load support, winpe_findkernel32, winpe_finmodule by asm
 */
 
 #ifndef _WINPE_H
@@ -38,8 +40,10 @@
 
 #ifdef _WIN32
 #define STDCALL __stdcall
+#define NAKED __declspec(naked)
 #else
 #define STDCALL __attribute__((stdcall))
+#define NAKED __attribute__((naked))
 #endif
 
 #ifdef __cplusplus
@@ -81,7 +85,8 @@ typedef SIZE_T (WINAPI *PFN_VirtualQuery)(
 typedef BOOL (WINAPI *PFN_DllMain)(HINSTANCE hinstDLL,
     DWORD fdwReason, LPVOID lpReserved );
 
-#define WINPE_LDFLAG_RVAPROC 0x1
+#define WINPE_LDFLAG_MEMALLOC 0x1
+#define WINPE_LDFLAG_MEMFIND 0x2
 
 // PE high order fnctions
 /*
@@ -107,11 +112,14 @@ void* winpe_overlayload_file(const char *path,
     return hmodule base
 */
 WINPEDEF WINPE_EXPORT
-void* STDCALL winpe_memLoadLibrary(void *mempe);
+inline void* STDCALL winpe_memLoadLibrary(void *mempe);
 
 /*
   if imagebase==0, will load on mempe, or in imagebase
-  will load the mempe in a valid imagebase, 
+  will load the mempe in a valid imagebase, flag as below:
+    WINPE_LDFLAG_MEMALLOC 0x1, will alloc memory to imagebase
+    WINPE_LDFLAG_MEMFIND 0x2, will find a valid space, 
+        must combined with WINPE_LDFLAG_MEMALLOC
     return hmodule base
 */
 WINPEDEF WINPE_EXPORT
@@ -128,6 +136,16 @@ WINPEDEF WINPE_EXPORT
 inline BOOL STDCALL winpe_memFreeLibrary(void *mempe);
 
 /*
+   FreeLibraryEx with VirtualFree custom function
+     return true or false
+*/
+WINPEDEF WINPE_EXPORT
+inline BOOL STDCALL winpe_memFreeLibraryEx(void *mempe, 
+    PFN_LoadLibraryA pfnLoadLibraryA, 
+    PFN_GetProcAddress pfnGetProcAddress);
+
+
+/*
    similar to GetProcAddress
      return function va
 */
@@ -137,15 +155,28 @@ inline PROC STDCALL winpe_memGetProcAddress(
 
 // PE query functions
 /*
-   use ped to find kernel32.dll address
+   use peb and ldr list, to obtain to find kernel32.dll address
      return kernel32.dll address
 */
 WINPEDEF WINPE_EXPORT
 inline void* winpe_findkernel32();
 
+/*
+   use peb and ldr list, similar as GetModuleHandleA
+     return ldr module address
+*/
+WINPEDEF WINPE_EXPORT
+inline void* STDCALL winpe_findmodulea(char *modulename);
+
+/*
+     return LoadLibraryA func addr
+*/
 WINPEDEF WINPE_EXPORT
 inline PROC winpe_findloadlibrarya();
 
+/*
+     return GetProcAddress func addr
+*/
 WINPEDEF WINPE_EXPORT
 inline PROC winpe_findgetprocaddress();
 
@@ -156,7 +187,7 @@ inline PROC winpe_findgetprocaddress();
 */
 WINPEDEF WINPE_EXPORT
 inline void* winpe_findspace(
-    size_t imagebase, size_t imagesize, 
+    size_t imagebase, size_t imagesize, size_t alignsize,
     PFN_VirtualQuery pfnVirtualQuery);
 
 // PE load, adjust functions
@@ -230,14 +261,24 @@ inline void *winpe_memforwardexp(
     return the old oep rva
 */
 WINPEDEF WINPE_EXPORT
-inline DWORD winpe_oepval(void *mempe, DWORD newoeprva);
+inline DWORD winpe_oepval(
+    void *mempe, DWORD newoeprva);
 
 /* 
   change the imagebase of the pe if newimagebase!=0
     return the old imagebase va
 */
 WINPEDEF WINPE_EXPORT
-inline size_t winpe_imagebaseval(void *mempe, size_t newimagebase);
+inline size_t winpe_imagebaseval(
+    void *mempe, size_t newimagebase);
+
+/* 
+  change the imagesize of the pe if newimagesize!=0
+    return the old imagesize
+*/
+WINPEDEF WINPE_EXPORT
+inline size_t winpe_imagesizeval(
+    void *pe, size_t newimagesize);
 
 /*
     close the aslr feature of an pe
@@ -251,8 +292,8 @@ inline void winpe_noaslr(void *pe);
     return image size
 */
 WINPEDEF WINPE_EXPORT 
-inline size_t winpe_appendsecth(void *mempe, 
-    PIMAGE_SECTION_HEADER psecth);
+inline size_t winpe_appendsecth(
+    void *mempe, PIMAGE_SECTION_HEADER psecth);
 
 
 #ifdef __cplusplus
@@ -267,7 +308,9 @@ inline size_t winpe_appendsecth(void *mempe,
 #endif
 #include <assert.h>
 #include <Windows.h>
+#include <winternl.h>
 
+// util inline functions
 inline static int _inl_stricmp(const char *str1, const char *str2)
 {
     int i=0;
@@ -276,6 +319,25 @@ inline static int _inl_stricmp(const char *str1, const char *str2)
         if (str1[i] == str2[i] 
         || str1[i] + 0x20 == str2[i] 
         || str2[i] + 0x20 == str1[i])
+        {
+            i++;
+        }
+        else
+        {
+            return (int)str1[i] - (int)str2[i];
+        }
+    }
+    return (int)str1[i] - (int)str2[i];
+}
+
+inline static int _inl_stricmp2(const char *str1, const wchar_t* str2)
+{
+    int i=0;
+    while(str1[i]!=0 && str2[i]!=0)
+    {
+        if ((wchar_t)str1[i] == str2[i] 
+        || (wchar_t)str1[i] + 0x20 == str2[i] 
+        || str2[i] + 0x20 == (wchar_t)str1[i])
         {
             i++;
         }
@@ -353,11 +415,16 @@ void* winpe_overlayload_file(
     return overlay;
 }
 
-
 WINPEDEF WINPE_EXPORT
-void* STDCALL winpe_memLoadLibrary(void *mempe)
+inline void* STDCALL winpe_memLoadLibrary(void *mempe)
 {
-    return NULL;
+    PFN_LoadLibraryA pfnLoadLibraryA = 
+        (PFN_LoadLibraryA)winpe_findloadlibrarya();
+    PFN_GetProcAddress pfnGetProcAddress = 
+        (PFN_GetProcAddress)winpe_findgetprocaddress();
+    return winpe_memLoadLibraryEx(mempe, 0, 
+        WINPE_LDFLAG_MEMFIND | WINPE_LDFLAG_MEMALLOC, 
+        pfnLoadLibraryA, pfnGetProcAddress);
 }
 
 WINPEDEF WINPE_EXPORT
@@ -366,13 +433,100 @@ inline void* STDCALL winpe_memLoadLibraryEx(void *mempe,
     PFN_LoadLibraryA pfnLoadLibraryA, 
     PFN_GetProcAddress pfnGetProcAddress)
 {
-    return NULL;
+    // bind windows api
+    char name_kernel32[] = {'k', 'e', 'r', 'n', 'e', 'l', '3', '2', '\0'};
+    char name_VirtualQuery[] = {'V', 'i', 'r', 't', 'u', 'a', 'l', 'Q', 'u', 'e', 'r', 'y', '\0'};
+    char name_VirtualAlloc[] = {'V', 'i', 'r', 't', 'u', 'a', 'l', 'A', 'l', 'l', 'o', 'c', '\0'};
+    char name_VirtualProtect[] = {'V', 'i', 'r', 't', 'u', 'a', 'l', 'P', 'r', 'o', 't', 'e', 'c', 't', '\0'};
+    HMODULE hmod_kernel32 = pfnLoadLibraryA(name_kernel32);
+    PFN_VirtualQuery pfnVirtualQuery = (PFN_VirtualQuery)
+        pfnGetProcAddress(hmod_kernel32, name_VirtualQuery);
+    PFN_VirtualAlloc pfnVirtualAlloc = (PFN_VirtualAlloc)
+        pfnGetProcAddress(hmod_kernel32, name_VirtualAlloc);
+    PFN_VirtualProtect pfnVirtualProtect =(PFN_VirtualProtect)
+        pfnGetProcAddress(hmod_kernel32, name_VirtualProtect);
+    assert(pfnVirtualQuery!=0 && pfnVirtualAlloc!=0 && pfnVirtualProtect!=0);
+
+    // find proper imagebase
+    size_t imagesize = winpe_imagesizeval(mempe, 0);
+    if(flag & WINPE_LDFLAG_MEMFIND)
+    {
+        imagebase = winpe_imagebaseval(mempe, 0);
+        imagebase = (size_t)winpe_findspace(imagebase,
+            imagesize, 0x10000, pfnVirtualQuery);
+    }
+    if(flag & WINPE_LDFLAG_MEMALLOC) // find proper memory to reloc
+    {
+
+        imagebase = (size_t)pfnVirtualAlloc((void*)imagebase, 
+            imagesize, MEM_COMMIT | MEM_RESERVE, 
+            PAGE_EXECUTE_READWRITE);
+        if(!imagebase) // try alloc in arbitary place
+        {
+            imagebase = (size_t)pfnVirtualAlloc(NULL, 
+                imagesize, MEM_COMMIT, 
+                PAGE_EXECUTE_READWRITE);
+            if(!imagebase) return NULL;
+        }
+        else
+        {
+            imagebase = (size_t)pfnVirtualAlloc((void*)imagebase, 
+                imagesize, MEM_COMMIT, PAGE_EXECUTE_READWRITE);
+            if(!imagebase) return NULL;            
+        }
+    }
+
+    // copy to imagebase
+    if(!imagebase) 
+    {
+        imagebase = (size_t)mempe;
+    }
+    else
+    {
+        DWORD oldprotect;
+        pfnVirtualProtect((void*)imagebase, imagesize, 
+            PAGE_EXECUTE_READWRITE, &oldprotect);
+        _inl_memcpy((void*)imagebase, mempe, imagesize);
+        pfnVirtualProtect((void*)imagebase, imagesize, 
+            oldprotect, &oldprotect);
+    }
+
+    // initial memory module
+    if(!winpe_memreloc((void*)imagebase, imagebase))
+        return NULL;
+    if(!winpe_membindiat((void*)imagebase, 
+        pfnLoadLibraryA, pfnGetProcAddress)) return NULL;
+    PFN_DllMain pfnDllMain = (PFN_DllMain)
+        (imagebase + winpe_oepval((void*)imagebase, 0));
+    pfnDllMain((HINSTANCE)imagebase, DLL_PROCESS_ATTACH, NULL);
+    return (void*)imagebase;
 }
 
 WINPEDEF WINPE_EXPORT
 inline BOOL STDCALL winpe_memFreeLibrary(void *mempe)
 {
-    return TRUE;
+    PFN_LoadLibraryA pfnLoadLibraryA = 
+        (PFN_LoadLibraryA)winpe_findloadlibrarya();
+    PFN_GetProcAddress pfnGetProcAddress = 
+        (PFN_GetProcAddress)winpe_findgetprocaddress();
+    return winpe_memFreeLibraryEx(mempe, 
+        pfnLoadLibraryA, pfnGetProcAddress);
+}
+
+WINPEDEF WINPE_EXPORT
+inline BOOL STDCALL winpe_memFreeLibraryEx(void *mempe, 
+    PFN_LoadLibraryA pfnLoadLibraryA, 
+    PFN_GetProcAddress pfnGetProcAddress)
+{
+    char name_kernel32[] = {'k', 'e', 'r', 'n', 'e', 'l', '3', '2', '\0'};
+    char name_VirtualFree[] = {'V', 'i', 'r', 't', 'u', 'a', 'l', 'F', 'r', 'e', 'e', '\0'};
+    HMODULE hmod_kernel32 = pfnLoadLibraryA(name_kernel32);
+    PFN_VirtualFree pfnVirtualFree = (PFN_VirtualFree)
+        pfnGetProcAddress(hmod_kernel32, name_VirtualFree);
+    PFN_DllMain pfnDllMain = (PFN_DllMain)
+        (mempe + winpe_oepval(mempe, 0));
+    pfnDllMain((HINSTANCE)mempe, DLL_PROCESS_DETACH, NULL);
+    return pfnVirtualFree(mempe, 0, MEM_FREE);
 }
 
 WINPEDEF WINPE_EXPORT
@@ -390,26 +544,109 @@ inline PROC STDCALL winpe_memGetProcAddress(
 WINPEDEF WINPE_EXPORT
 inline void* winpe_findkernel32()
 {
+    // return (void*)LoadLibrary("kernel32.dll");
+    // TEB->PEB->Ldr->InMemoryOrderLoadList->curProgram->ntdll->kernel32
+    void *kerenl32 = NULL;
+#ifdef _WIN64
+    __asm{
+        mov rax, gs:[60h]; peb
+        mov rax, [rax+18h]; ldr
+        mov rax, [rax+20h]; InMemoryOrderLoadList, currentProgramEntry
+        mov rax, [rax]; ntdllEntry, currentProgramEntry->->Flink
+        mov rax, [rax]; kernel32Entry,  ntdllEntry->Flink
+        mov rax, [rax-10h+30h]; kernel32.DllBase
+        mov kerenl32, rax;
+    }
+#else
+    __asm{
+        mov eax, fs:[30h]; peb
+        mov eax, [eax+0ch]; ldr
+        mov eax, [eax+14h]; InMemoryOrderLoadList, currentProgramEntry
+        mov eax, [eax]; ntdllEntry, currentProgramEntry->->Flink
+        mov eax, [eax]; kernel32Entry,  ntdllEntry->Flink
+        mov eax, [eax - 8h +18h]; kernel32.DllBase
+        mov kerenl32, eax;
+    }
+#endif
+    return kerenl32;
+}
+
+WINPEDEF WINPE_EXPORT
+inline void* STDCALL winpe_findmodulea(char *modulename)
+{
+    PPEB_LDR_DATA ldr = NULL;
+    PLDR_DATA_TABLE_ENTRY ldrentry = NULL;
+#ifdef _WIN64
+    __asm{
+        mov rax, gs:[60h]; peb
+        mov rax, [rax+18h]; ldr
+        mov ldr, rax
+    }
+#else
+    __asm{
+        mov eax, fs:[30h]; peb
+        mov eax, [eax+0ch]; ldr
+        mov ldr, eax;
+    }
+#endif
+    // InMemoryOrderModuleList is the second entry
+    ldrentry = (PLDR_DATA_TABLE_ENTRY)((size_t)
+        ldr->InMemoryOrderModuleList.Flink - 2*sizeof(size_t));
+    while(ldrentry->InMemoryOrderLinks.Flink != 
+        ldr->InMemoryOrderModuleList.Flink)
+    {
+        PUNICODE_STRING ustr = &ldrentry->FullDllName;
+        int i;
+        for(i=ustr->MaximumLength/2-1; i>0 && ustr->Buffer[i]!='\\';i--);
+        if(ustr->Buffer[i]=='\\') i++;
+        if(_inl_stricmp2(modulename,  ustr->Buffer + i)==0)
+        {
+            return ldrentry->DllBase;
+        }
+        ldrentry = (PLDR_DATA_TABLE_ENTRY)((size_t)
+            ldrentry->InMemoryOrderLinks.Flink - 2*sizeof(size_t));
+    }
     return NULL;
 }
 
 WINPEDEF WINPE_EXPORT
 inline PROC winpe_findloadlibrarya()
 {
-    return NULL;
+    // return (PROC)LoadLibraryA;
+    HMODULE hmod_kernel32 = (HMODULE)winpe_findkernel32();
+    char name_LoadLibraryA[] = {'L', 'o', 'a', 'd', 'L', 'i', 'b', 'r', 'a', 'r', 'y', 'A', '\0'};
+    return (PROC)winpe_memfindexp( // suppose exp no forward, to avoid recursive
+        (void*)hmod_kernel32, name_LoadLibraryA);
 }
 
 WINPEDEF WINPE_EXPORT
 inline PROC winpe_findgetprocaddress()
 {
-    return NULL;
+    // return (PROC)GetProcAddress;
+    HMODULE hmod_kernel32 = (HMODULE)winpe_findkernel32();
+    char name_GetProcAddress[] = {'G', 'e', 't', 'P', 'r', 'o', 'c', 'A', 'd', 'd', 'r', 'e', 's', 's', '\0'};
+    return winpe_memGetProcAddress(hmod_kernel32, name_GetProcAddress);
 }
 
 WINPEDEF WINPE_EXPORT
 inline void* winpe_findspace(
-    size_t imagebase, size_t imagesize, 
+    size_t imagebase, size_t imagesize, size_t alignsize, 
     PFN_VirtualQuery pfnVirtualQuery)
 {
+#define MAX_QUERY 0x1000
+    size_t addr = imagebase;
+    MEMORY_BASIC_INFORMATION minfo;
+    for (int i=0;i<MAX_QUERY;i++)
+    {
+        if(addr % alignsize) addr += 
+            alignsize - addr% alignsize;
+        pfnVirtualQuery((LPVOID)addr, 
+            &minfo, sizeof(MEMORY_BASIC_INFORMATION));
+        if(minfo.State==MEM_FREE 
+            && minfo.RegionSize >= imagesize) 
+            return (void*)addr;
+        addr += minfo.RegionSize;
+    }
     return NULL;
 }
 
@@ -546,8 +783,11 @@ inline size_t winpe_membindiat(void *mempe,
     PIMAGE_IMPORT_BY_NAME pImpByName = NULL;
 
     // origin GetProcAddress will crash at InitializeSListHead 
-    if(!pfnLoadLibraryA) pfnLoadLibraryA = LoadLibraryA;
-    if(!pfnGetProcAddress) pfnGetProcAddress = GetProcAddress;
+    if(!pfnLoadLibraryA) pfnLoadLibraryA = 
+        (PFN_LoadLibraryA)winpe_findloadlibrarya();
+    if(!pfnGetProcAddress) pfnGetProcAddress = 
+        (PFN_GetProcAddress)winpe_findgetprocaddress();
+
     DWORD iat_count = 0;
     for (; pImpDescriptor->Name; pImpDescriptor++) 
     {
@@ -567,8 +807,8 @@ inline size_t winpe_membindiat(void *mempe,
                 pOftThunk[j].u1.AddressOfData);
             size_t addr = (size_t)pfnGetProcAddress(
                 (HMODULE)dllbase, pImpByName->Name);
-            addr = (size_t)winpe_memforwardexp((void*)dllbase, 
-                addr-dllbase, pfnLoadLibraryA, pfnGetProcAddress);
+            // addr = (size_t)winpe_memforwardexp((void*)dllbase, 
+            //     addr-dllbase, pfnLoadLibraryA, pfnGetProcAddress);
             if(!addr) continue;
             pFtThunk[j].u1.Function = addr;
             assert(addr == (size_t)GetProcAddress(
@@ -758,6 +998,19 @@ inline size_t winpe_imagebaseval(void *pe, size_t newimagebase)
     size_t imagebase = pOptHeader->ImageBase;
     if(newimagebase) pOptHeader->ImageBase = newimagebase;
     return imagebase; 
+}
+
+WINPEDEF WINPE_EXPORT
+inline size_t winpe_imagesizeval(void *pe, size_t newimagesize)
+{
+    PIMAGE_DOS_HEADER pDosHeader = (PIMAGE_DOS_HEADER)pe;
+    PIMAGE_NT_HEADERS  pNtHeader = (PIMAGE_NT_HEADERS)
+        ((void*)pe + pDosHeader->e_lfanew);
+    PIMAGE_FILE_HEADER pFileHeader = &pNtHeader->FileHeader;
+    PIMAGE_OPTIONAL_HEADER pOptHeader = &pNtHeader->OptionalHeader;
+    size_t imagesize = pOptHeader->SizeOfImage;
+    if(newimagesize) pOptHeader->SizeOfImage = newimagesize;
+    return imagesize; 
 }
 
 WINPEDEF WINPE_EXPORT 
