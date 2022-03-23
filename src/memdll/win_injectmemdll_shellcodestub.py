@@ -1,12 +1,13 @@
 """
    this file is for automaticly generate some shellcodes stub informations
-   v0.3, developed by devseed
+   v0.3.2, developed by devseed
    
    history:
       v0.1, initial version
       v0.2, add more function for shellcode
       v0.3, x86 and x64 no need to use exe's LoadLibraryA
       v0.3.1, fix x64 attach dll crash by align stack with 0x10
+      v0.3.2, add support for ordinal iat and tls 
 """
 import re
 import sys
@@ -20,27 +21,33 @@ def gen_oepinit_code32():
       call geteip; 
       lea ebx, [eax-5];
 
+      // get loadlibrarya, getprocaddress
+      call [ebx + findloadlibrarya];
+      mov [ebx + findloadlibrarya], eax;
+      call [ebx + findgetprocaddress];
+      mov [ebx + findgetprocaddress], eax;
+
       // bind iat
-      lea eax, [ebx + getprocessaddress];
-      mov eax, [eax];
-      push eax; 
-      lea eax, [ebx + findloadlibrarya];
-      call [eax]; 
-      push eax;
-      lea eax, [ebx + dllbase]; // dllbase addr
-      mov eax, [eax]; // dllbase value
-      push eax;
-      call [ebx + memiatbind];
+      push [ebx + findgetprocaddress]; // arg3, getprocaddress
+      push [ebx + findloadlibrarya]; // arg2, loadlibraryas
+      push [ebx + dllbase]; // arg1, dllbase value
+      call [ebx + membindiat];
       add esp, 0xc;
+
+      // bind tls
+      xor edx, edx;
+      inc edx; // arg2, reason for tls
+      push edx;
+      push [ebx + dllbase] // arg1, dllbase
+      call [ebx + membindtls]
+      add esp, 0x8;
       
       // call dll oep, for dll entry
       xor eax, eax; 
       push eax; // lpvReserved
       inc eax;
       push eax; // fdwReason, DLL_PROCESS_ATTACH
-      lea eax, [ebx + dllbase];
-      mov eax, [eax];
-      push eax; // hinstDLL
+      push [ebx + dllbase]; // hinstDLL
       call [ebx+dlloepva];
 
       // jmp to origin oep
@@ -53,9 +60,11 @@ def gen_oepinit_code32():
       exeoepva: nop;nop;nop;nop;
       dllbase: nop;nop;nop;nop;
       dlloepva: nop;nop;nop;nop;
-      memiatbind: nop;nop;nop;nop;
+      memreloc: nop;nop;nop;nop;
+      membindiat: nop;nop;nop;nop;
+      membindtls: nop;nop;nop;nop;
       findloadlibrarya: nop;nop;nop;nop;
-      getprocessaddress: nop;nop;nop;nop;
+      findgetprocaddress: nop;nop;nop;nop;
       """
    print("gen_oepinit_code32", code_str)
    payload, _ = ks.asm(code_str)
@@ -74,22 +83,29 @@ def gen_oepinit_code64():
       push r9;
       sub rsp, 0x28; // this is for memory 0x10 align
 
+      // get loadlibrarya, getprocaddress
+      call [rbx + findloadlibrarya];
+      mov [rbx + findloadlibrarya], rax;
+      call [rbx + findgetprocaddress];
+      mov [rbx + findgetprocaddress], rax;
+
       // bind iat
-      lea rdx, [rbx + findloadlibrarya];
-      call [rdx]; 
-      mov rdx, rax; // arg2, loadlibraryas
-      lea r8, [rbx + getprocessaddress];
-      mov r8, [r8]; // arg3, getprocaddress
-      lea rcx, [rbx + dllbase];
-      mov rcx, [rcx]; // arg1, dllbase value
-      call [rbx + memiatbind];
+      mov r8, [rbx + findgetprocaddress]; // arg3, getprocaddress
+      mov rdx, [rbx + findloadlibrarya]; // arg2, loadlibraryas
+      mov rcx, [rbx + dllbase]; // arg1, dllbase value
+      call [rbx + membindiat];
+
+      // bind tls
+      xor rdx, rdx;
+      inc rdx; // argc, reason for tls
+      mov rcx, [rbx + dllbase] // arg1, dllbase
+      call [rbx + membindtls] 
       
       // call dll oep, for dll entry
       xor r8, r8; // lpvReserved
       xor rdx, rdx; 
       inc rdx; // fdwReason, DLL_PROCESS_ATTACH
-      lea rcx, [rbx + dllbase];
-      mov rcx, [rcx]; // hinstDLL
+      mov rcx, [rbx + dllbase]; // hinstDLL
       call [rbx+dlloepva];
 
       // jmp to origin oep
@@ -107,9 +123,11 @@ def gen_oepinit_code64():
       exeoepva: nop;nop;nop;nop;nop;nop;nop;nop;
       dllbase: nop;nop;nop;nop;nop;nop;nop;nop;
       dlloepva: nop;nop;nop;nop;nop;nop;nop;nop;
-      memiatbind: nop;nop;nop;nop;nop;nop;nop;nop;
+      memreloc: nop;nop;nop;nop;nop;nop;nop;nop;
+      membindiat: nop;nop;nop;nop;nop;nop;nop;nop;
+      membindtls: nop;nop;nop;nop;nop;nop;nop;nop;
       findloadlibrarya: nop;nop;nop;nop;nop;nop;nop;nop;
-      getprocessaddress: nop;nop;nop;nop;nop;nop;nop;nop;
+      findgetprocaddress: nop;nop;nop;nop;nop;nop;nop;nop;
       """
    print("gen_oepinit_code64", code_str)
    payload, _ = ks.asm(code_str)
@@ -136,8 +154,9 @@ def inject_shellcodestubs(srcpath, libwinpepath, targetpath):
    FUNC_SIZE =0x400
    codes = {"winpe_memreloc": 0, 
       "winpe_membindiat": 0, 
+      "winpe_membindtls": 0,
       "winpe_findloadlibrarya": 0, 
-      "winpe_memGetProcAddress": 0}
+      "winpe_findgetprocaddress": 0}
    for k in codes.keys():
       func = next(filter(lambda e : e.name == k, 
          pedll.exported_functions))

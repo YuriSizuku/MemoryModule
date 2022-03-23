@@ -1,10 +1,9 @@
 /* 
   a tool to attach a dll inside a pe file
-  v0.3, developed by devseed
+  v0.3.2, developed by devseed
 
   history: 
-    v0.2, support for x86
-    v0.3, add test part, support for x64, optimizing code structure
+    see win_injectmemdll_shellcodestub.py
 */
 
 #include <stdio.h>
@@ -22,8 +21,55 @@
 unsigned char g_oepinit_code[] = {0x90};
 unsigned char g_memreloc_code[] = {0x90};
 unsigned char g_membindiat_code[] = {0x90};
+unsigned char g_membindtls_code[] = {0x90};
 unsigned char g_findloadlibrarya_code[] = {0x90};
-unsigned char g_memGetProcAddress_code[] = {0x90};
+unsigned char g_findgetprocaddress_code[] = {0x90};
+
+void _makeoepcode(void *shellcode, 
+    size_t shellcodebase, size_t exeimagebase, size_t dllimagebase, 
+    DWORD exeoeprva, DWORD dlloeprva)
+{
+    // bind the pointer to buffer
+    size_t oepinit_end = sizeof(g_oepinit_code);
+    size_t memreloc_start = FUNC_SIZE;
+    size_t membindiat_start = memreloc_start + FUNC_SIZE;
+    size_t membindtls_start = membindiat_start + FUNC_SIZE;
+    size_t findloadlibrarya_start = membindtls_start + FUNC_SIZE;
+    size_t findgetprocaddress_start = findloadlibrarya_start + FUNC_SIZE;
+
+     // fill the address table
+    size_t *pexeoepva = (size_t*)(g_oepinit_code + oepinit_end - 8*sizeof(size_t));
+    size_t *pdllbase = (size_t*)(g_oepinit_code + oepinit_end - 7*sizeof(size_t));
+    size_t *pdlloepva = (size_t*)(g_oepinit_code + oepinit_end - 6*sizeof(size_t));
+    size_t *pmemreloc = (size_t*)(g_oepinit_code + oepinit_end - 5*sizeof(size_t));
+    size_t *pmembindiat = (size_t*)(g_oepinit_code + oepinit_end - 4*sizeof(size_t));
+    size_t *pmembindtls = (size_t*)(g_oepinit_code + oepinit_end - 3*sizeof(size_t));
+    size_t *pfindloadlibrarya = (size_t*)(g_oepinit_code + oepinit_end - 2*sizeof(size_t));
+    size_t *pfindgetprocaddress = (size_t*)(g_oepinit_code + oepinit_end - 1*sizeof(size_t));
+    *pexeoepva = exeimagebase + exeoeprva;
+    *pdllbase =  dllimagebase;
+    *pdlloepva = dllimagebase + dlloeprva;
+    *pmemreloc = shellcodebase + memreloc_start;
+    *pmembindiat = shellcodebase + membindiat_start;
+    *pmembindtls = shellcodebase + membindtls_start;
+    *pfindloadlibrarya = shellcodebase + findloadlibrarya_start;
+    *pfindgetprocaddress = shellcodebase + findgetprocaddress_start;
+
+    // copy to the target
+    memcpy(shellcode , 
+        g_oepinit_code, sizeof(g_oepinit_code));
+    memcpy(shellcode + memreloc_start, 
+        g_memreloc_code, sizeof(g_memreloc_code));
+    memcpy(shellcode + membindiat_start, 
+        g_membindiat_code, sizeof(g_membindiat_code));
+    memcpy(shellcode + membindtls_start, 
+        g_membindtls_code, sizeof(g_membindtls_code));
+    memcpy(shellcode + findloadlibrarya_start, 
+        g_findloadlibrarya_code, sizeof(g_findloadlibrarya_code));
+    memcpy(shellcode + findgetprocaddress_start, 
+        g_findgetprocaddress_code, sizeof(g_findgetprocaddress_code));
+}
+
 
 size_t _sectpaddingsize(void *mempe, void *mempe_dll, size_t align)
 {
@@ -35,76 +81,6 @@ size_t _sectpaddingsize(void *mempe, void *mempe_dll, size_t align)
     size_t _v = (pOptHeader->SizeOfImage + SHELLCODE_SIZE) % align;
     if (_v) return align - _v;
     else return 0;
-}
-
-void _oepshellcode(void *mempe_exe, void *mempe_dll, void *shellcode, 
-    size_t shellcodebase, size_t dllimagebase, DWORD orgoeprva)
-{
-    // PE struct declear
-    void *mempe;
-    PIMAGE_DOS_HEADER pDosHeader;
-    PIMAGE_NT_HEADERS  pNtHeader;
-    PIMAGE_FILE_HEADER pFileHeader;
-    PIMAGE_OPTIONAL_HEADER pOptHeader;
-    PIMAGE_DATA_DIRECTORY pDataDirectory;
-    PIMAGE_DATA_DIRECTORY pImpEntry;
-    PIMAGE_IMPORT_DESCRIPTOR pImpDescriptor;
-    PIMAGE_THUNK_DATA pFtThunk = NULL;
-    PIMAGE_THUNK_DATA pOftThunk = NULL;
-    LPCSTR pDllName = NULL;
-    PIMAGE_IMPORT_BY_NAME pFuncName = NULL;
-
-    // bind the pointer to buffer
-    size_t oepinit_end = sizeof(g_oepinit_code);
-    size_t memreloc_start = FUNC_SIZE;
-    size_t memiatbind_start = memreloc_start + FUNC_SIZE;
-    size_t memfindloadlibrarya_start = memiatbind_start + FUNC_SIZE;
-    size_t memGetProcAddress_start = memfindloadlibrarya_start + FUNC_SIZE;
-    size_t *pexeoepva = (size_t*)(g_oepinit_code + oepinit_end - 6*sizeof(size_t));
-    size_t *pdllbase = (size_t*)(g_oepinit_code + oepinit_end - 5*sizeof(size_t));
-    size_t *pdlloepva = (size_t*)(g_oepinit_code + oepinit_end - 4*sizeof(size_t));
-    size_t *pmemiatbind = (size_t*)(g_oepinit_code + oepinit_end - 3*sizeof(size_t));
-    size_t *pfindloadlibrarya = (size_t*)(g_oepinit_code + oepinit_end - 2*sizeof(size_t));
-    size_t *pgetprocessaddress = (size_t*)(g_oepinit_code + oepinit_end - 1*sizeof(size_t));
-
-    // get the information of exe
-    mempe = mempe_exe;
-    pDosHeader = (PIMAGE_DOS_HEADER)mempe;
-    pNtHeader = (PIMAGE_NT_HEADERS)((void*)mempe + pDosHeader->e_lfanew);
-    pFileHeader = &pNtHeader->FileHeader;
-    pOptHeader = &pNtHeader->OptionalHeader;
-    pDataDirectory = pOptHeader->DataDirectory;
-    pImpEntry =  &pDataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT];
-    pImpDescriptor = (PIMAGE_IMPORT_DESCRIPTOR)(mempe + pImpEntry->VirtualAddress);
-    size_t exeimagebase = pOptHeader->ImageBase;
-
-    // get the information of dll
-    mempe = mempe_dll;
-    pDosHeader = (PIMAGE_DOS_HEADER)mempe;
-    pNtHeader = (PIMAGE_NT_HEADERS)((void*)mempe + pDosHeader->e_lfanew);
-    pFileHeader = &pNtHeader->FileHeader;
-    pOptHeader = &pNtHeader->OptionalHeader;
-    pDataDirectory = pOptHeader->DataDirectory;
-    DWORD dlloeprva = pOptHeader->AddressOfEntryPoint;
-
-    // fill the address table
-    *pexeoepva = exeimagebase + orgoeprva;
-    *pdllbase =  dllimagebase;
-    *pdlloepva = dllimagebase + pOptHeader->AddressOfEntryPoint;
-    *pmemiatbind = shellcodebase + memiatbind_start;
-    *pfindloadlibrarya = shellcodebase + memfindloadlibrarya_start;
-    *pgetprocessaddress = shellcodebase + memGetProcAddress_start;
-
-    // copy to the target
-    memcpy(shellcode , g_oepinit_code, sizeof(g_oepinit_code));
-    memcpy(shellcode + memreloc_start, 
-        g_memreloc_code, sizeof(g_memreloc_code));
-    memcpy(shellcode + memiatbind_start, 
-        g_membindiat_code, sizeof(g_membindiat_code));
-    memcpy(shellcode + memfindloadlibrarya_start, 
-        g_findloadlibrarya_code, sizeof(g_findloadlibrarya_code));
-    memcpy(shellcode + memGetProcAddress_start, 
-        g_memGetProcAddress_code, sizeof(g_memGetProcAddress_code));
 }
 
 // memory structure: [exe sections], [shellcode, padding, dll]
@@ -147,11 +123,13 @@ int injectdll_mem(const char *exepath,
     winpe_appendsecth(mempe_exe, &secth);
 
     // adjust dll addr and append shellcode, iatbind is in runing
-    DWORD orgoeprva = winpe_oepval(mempe_exe, secth.VirtualAddress);
     size_t shellcodebase = imgbase_exe + secth.VirtualAddress;
     size_t dllimagebase = shellcodebase + SHELLCODE_SIZE + padding;
-    _oepshellcode(mempe_exe, mempe_dll, shellcode, 
-        shellcodebase, dllimagebase, orgoeprva);
+    size_t exeimagebase = winpe_imagebaseval(mempe_exe, 0);
+    DWORD dlloeprva = winpe_oepval(mempe_dll, 0);
+    DWORD exeoeprva = winpe_oepval(mempe_exe, secth.VirtualAddress);
+    _makeoepcode(shellcode, shellcodebase, 
+        exeimagebase, dllimagebase, exeoeprva, dlloeprva);
     winpe_memreloc(mempe_dll, dllimagebase);
 
     // write data to new exe
@@ -230,7 +208,7 @@ int main(int argc, char *argv[])
     if(argc < 3)
     {
         printf("usage: win_injectmemdll exepath dllpath [outpath]\n");
-        printf("v0.2, developed by devseed\n");
+        printf("v0.3.2, developed by devseed\n");
         return 0;
     }
     char outpath[MAX_PATH];

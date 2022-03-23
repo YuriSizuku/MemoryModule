@@ -2,7 +2,8 @@
 A tool to parse and load module in memory, as well as attach a DLL in EXE.
 Most of the functions are inline, so that it can also be used in shellcode.
 
-This project is tested on `windows  xp `,  `windows 7`,  `windows 10`,  `windows 11`.
+This project is tested on `windows  xp `,  `windows 7`,  `windows 10`,  `windows 11`, 
+also the attached exe file  packed by upx is tested.  
 
 ## compile
 
@@ -117,6 +118,13 @@ inline size_t winpe_memreloc(void *mempe, size_t newimagebase);
 inline size_t winpe_membindiat(void *mempe, 
     PFN_LoadLibraryA pfnLoadLibraryA, 
     PFN_GetProcAddress pfnGetProcAddress);
+
+/*
+  exec the tls callbacks for the mempe, before dll oep load
+  reason is for function PIMAGE_TLS_CALLBACK
+    return tls count
+*/
+inline size_t winpe_membindtls(void *mempe, DWORD reason);
 ```
 
 See `winpe.h`  for parsing and loading PE structure in detail.
@@ -124,5 +132,10 @@ See `winpe.h`  for parsing and loading PE structure in detail.
 ## known issues
 
 * ~~attach x64 DLL to exe crash on calling some windows API~~  
-  problem occured  by `movaps xmm0, xmmword ptr ss:[rsp]`
+  problem occured by `movaps xmm0, xmmword ptr ss:[rsp]`
   fixed by stack memory align with 0x10
+
+## todo
+
+* ~~TLS initialize support~~ finished, but not tested, because I didn't find DLL with TLS example.
+* support ASLR
