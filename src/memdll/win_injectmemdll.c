@@ -1,8 +1,8 @@
 /* 
-  a tool to attach a dll inside a pe file
-  v0.3.2, developed by devseed
+A tool to attach a dll inside a pe file
+    v0.3.2, developed by devseed
 
-  history: 
+history: 
     see win_injectmemdll_shellcodestub.py
 */
 
