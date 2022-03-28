@@ -1,6 +1,6 @@
 /* 
 A tool to attach a dll inside a pe file
-    v0.3.2, developed by devseed
+    v0.3.3, developed by devseed
 
 history: 
     see win_injectmemdll_shellcodestub.py
@@ -26,8 +26,8 @@ unsigned char g_findloadlibrarya_code[] = {0x90};
 unsigned char g_findgetprocaddress_code[] = {0x90};
 
 void _makeoepcode(void *shellcode, 
-    size_t shellcodebase, size_t exeimagebase, size_t dllimagebase, 
-    DWORD exeoeprva, DWORD dlloeprva)
+    size_t shellcoderva, size_t dllrva, 
+    DWORD orgexeoeprva, DWORD orgdlloeprva)
 {
     // bind the pointer to buffer
     size_t oepinit_end = sizeof(g_oepinit_code);
@@ -38,22 +38,22 @@ void _makeoepcode(void *shellcode,
     size_t findgetprocaddress_start = findloadlibrarya_start + FUNC_SIZE;
 
      // fill the address table
-    size_t *pexeoepva = (size_t*)(g_oepinit_code + oepinit_end - 8*sizeof(size_t));
-    size_t *pdllbase = (size_t*)(g_oepinit_code + oepinit_end - 7*sizeof(size_t));
-    size_t *pdlloepva = (size_t*)(g_oepinit_code + oepinit_end - 6*sizeof(size_t));
-    size_t *pmemreloc = (size_t*)(g_oepinit_code + oepinit_end - 5*sizeof(size_t));
-    size_t *pmembindiat = (size_t*)(g_oepinit_code + oepinit_end - 4*sizeof(size_t));
-    size_t *pmembindtls = (size_t*)(g_oepinit_code + oepinit_end - 3*sizeof(size_t));
+    size_t *pexeoeprva = (size_t*)(g_oepinit_code + oepinit_end - 8*sizeof(size_t));
+    size_t *pdllbrva = (size_t*)(g_oepinit_code + oepinit_end - 7*sizeof(size_t));
+    size_t *pdlloeprva = (size_t*)(g_oepinit_code + oepinit_end - 6*sizeof(size_t));
+    size_t *pmemrelocrva = (size_t*)(g_oepinit_code + oepinit_end - 5*sizeof(size_t));
+    size_t *pmembindiatrva = (size_t*)(g_oepinit_code + oepinit_end - 4*sizeof(size_t));
+    size_t *pmembindtlsrva = (size_t*)(g_oepinit_code + oepinit_end - 3*sizeof(size_t));
     size_t *pfindloadlibrarya = (size_t*)(g_oepinit_code + oepinit_end - 2*sizeof(size_t));
     size_t *pfindgetprocaddress = (size_t*)(g_oepinit_code + oepinit_end - 1*sizeof(size_t));
-    *pexeoepva = exeimagebase + exeoeprva;
-    *pdllbase =  dllimagebase;
-    *pdlloepva = dllimagebase + dlloeprva;
-    *pmemreloc = shellcodebase + memreloc_start;
-    *pmembindiat = shellcodebase + membindiat_start;
-    *pmembindtls = shellcodebase + membindtls_start;
-    *pfindloadlibrarya = shellcodebase + findloadlibrarya_start;
-    *pfindgetprocaddress = shellcodebase + findgetprocaddress_start;
+    *pexeoeprva = orgexeoeprva;
+    *pdllbrva =  dllrva;
+    *pdlloeprva = dllrva + orgdlloeprva;
+    *pmemrelocrva = shellcoderva + memreloc_start;
+    *pmembindiatrva = shellcoderva + membindiat_start;
+    *pmembindtlsrva = shellcoderva + membindtls_start;
+    *pfindloadlibrarya = shellcoderva + findloadlibrarya_start;
+    *pfindgetprocaddress = shellcoderva + findgetprocaddress_start;
 
     // copy to the target
     memcpy(shellcode , 
@@ -109,7 +109,6 @@ int injectdll_mem(const char *exepath,
         ((void*)mempe + pDosHeader->e_lfanew);
     PIMAGE_FILE_HEADER pFileHeader = &pNtHeader->FileHeader;
     PIMAGE_OPTIONAL_HEADER pOptHeader = &pNtHeader->OptionalHeader;
-    imgbase_exe = pOptHeader->ImageBase;
 
     // append section header to exe
     size_t align = sizeof(size_t) > 4 ? 0x10000: 0x1000; 
@@ -123,14 +122,13 @@ int injectdll_mem(const char *exepath,
     winpe_appendsecth(mempe_exe, &secth);
 
     // adjust dll addr and append shellcode, iatbind is in runing
-    size_t shellcodebase = imgbase_exe + secth.VirtualAddress;
-    size_t dllimagebase = shellcodebase + SHELLCODE_SIZE + padding;
-    size_t exeimagebase = winpe_imagebaseval(mempe_exe, 0);
-    DWORD dlloeprva = winpe_oepval(mempe_dll, 0);
-    DWORD exeoeprva = winpe_oepval(mempe_exe, secth.VirtualAddress);
-    _makeoepcode(shellcode, shellcodebase, 
-        exeimagebase, dllimagebase, exeoeprva, dlloeprva);
-    winpe_memreloc(mempe_dll, dllimagebase);
+    size_t shellcoderva = secth.VirtualAddress;
+    size_t dllrva = shellcoderva + SHELLCODE_SIZE + padding;
+    DWORD orgdlloeprva = winpe_oepval(mempe_dll, 0); // origin orgdlloeprva
+    DWORD orgexeoeprva = winpe_oepval(mempe_exe, secth.VirtualAddress);
+    _makeoepcode(shellcode, shellcoderva, dllrva, orgexeoeprva, orgdlloeprva);
+    // reloc while runing
+    // winpe_memreloc(mempe_dll, dllrva);
 
     // write data to new exe
     FILE *fp = fopen(outpath, "wb");
@@ -161,8 +159,14 @@ void test_getfunc(HMODULE hmod, const char *funcname)
 
 void test_exp()
 {
-    // test loadlibrary, getprocaddress
     HMODULE hmod = NULL, hmod2 = NULL, hmod3 = NULL;
+    // test winpe_findmodulea
+    hmod = GetModuleHandleA(NULL);
+    hmod2 = winpe_findmodulea(NULL);
+    assert(hmod!=NULL && hmod==hmod2);
+    printf("winpe_findmodulea(NULL) %p passed!\n", hmod2);
+    
+    // test loadlibrary, getprocaddress
     hmod = LoadLibraryA("kernel32.dll");
     hmod2 = winpe_findkernel32();
     hmod3 = winpe_findmodulea("kernel32.dll");
@@ -208,7 +212,7 @@ int main(int argc, char *argv[])
     if(argc < 3)
     {
         printf("usage: win_injectmemdll exepath dllpath [outpath]\n");
-        printf("v0.3.2, developed by devseed\n");
+        printf("v0.3.3, developed by devseed\n");
         return 0;
     }
     char outpath[MAX_PATH];

@@ -4,13 +4,16 @@ EXPORTS
     winpe_findkernel32
     winpe_findloadlibrarya
     winpe_findspace
+    winpe_findmodulea
     winpe_imagebaseval
+    winpe_imagesizeval
     winpe_memFreeLibrary
     winpe_memFreeLibraryEx
     winpe_memGetProcAddress
     winpe_memLoadLibrary
     winpe_memLoadLibraryEx
     winpe_membindiat
+    winpe_membindtls
     winpe_memfindexp
     winpe_memfindiat
     winpe_memforwardexp

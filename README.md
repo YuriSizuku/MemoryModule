@@ -2,8 +2,8 @@
 A tool to parse and load module in memory, as well as attach a DLL in EXE.
 Most of the functions are inline, so that it can also be used in shellcode.
 
-This project is tested on `windows  xp `,  `windows 7`,  `windows 10`,  `windows 11`, 
-also the attached exe file  packed by upx is tested.  
+This project is tested on `windows xp `,  `windows 7`,  `windows 10`,  `windows 11`, `linux wine`
+also the attached exe file packed by `upx` is tested.  
 
 ## compile
 
@@ -138,4 +138,4 @@ See `winpe.h`  for parsing and loading PE structure in detail.
 ## todo
 
 * ~~TLS initialize support~~ finished, but not tested, because I didn't find DLL with TLS example.
-* support ASLR
+* ~~support ASLR~~ finished
