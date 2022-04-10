@@ -15,6 +15,7 @@ src/**/release/*
 src/**/debug/*
 src/**/bin/*
 src/**/sample/*
+src/**/memdll/*.md
 util/asset/**
 util/bin/**
 util/script/**

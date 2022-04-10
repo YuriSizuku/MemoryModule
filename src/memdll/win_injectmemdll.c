@@ -207,7 +207,7 @@ int main(int argc, char *argv[])
 {    
 #ifdef _DEBUG
     test_exp();
-    if(argc>3) test_memdll(argv[2]);
+    if(argc > 3) test_memdll(argv[2]);
 #endif
     if(argc < 3)
     {
