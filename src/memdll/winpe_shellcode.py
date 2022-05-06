@@ -1,11 +1,9 @@
-"""
-this file is for automaticly generate some shellcodes stub informations
-    v0.3.3, developed by devseed
-"""
-import re
+import os
 import sys
-import lief
-from keystone import Ks, KS_ARCH_X86, KS_MODE_32, KS_MODE_64
+from keystone import *
+
+sys.path.append("./../../util/script/")
+import shellcode
 
 def gen_oepinit_code32():
     ks = Ks(KS_ARCH_X86, KS_MODE_32)
@@ -93,9 +91,9 @@ def gen_oepinit_code32():
     findloadlibrarya: nop;nop;nop;nop;
     findgetprocaddress: nop;nop;nop;nop;
     """
-    print("gen_oepinit_code32", code_str)
+    # print("gen_oepinit_code32", code_str)
     payload, _ = ks.asm(code_str)
-    print("payload: ", [hex(x) for x in payload])
+    # print("payload: ", [hex(x) for x in payload])
     return payload
 
 def gen_oepinit_code64():
@@ -186,77 +184,31 @@ def gen_oepinit_code64():
     findloadlibrarya: nop;nop;nop;nop;nop;nop;nop;nop;
     findgetprocaddress: nop;nop;nop;nop;nop;nop;nop;nop;
     """
-    print("gen_oepinit_code64", code_str)
+    # print("gen_oepinit_code64", code_str)
     payload, _ = ks.asm(code_str)
-    print("payload: ", [hex(x) for x in payload])
+    # print("payload: ", [hex(x) for x in payload])
     return payload
 
-def inject_shellcodestubs(srcpath, libwinpepath, targetpath):
-    pedll = lief.parse(libwinpepath)
-    pedll_oph = pedll.optional_header
-
-    # generate oepint shellcode
-    if pedll_oph.magic == lief.PE.PE_TYPE.PE32_PLUS:
-        oepinit_code = gen_oepinit_code64()
-        pass
-    elif pedll_oph.magic == lief.PE.PE_TYPE.PE32:
-        oepinit_code = gen_oepinit_code32()
-        pass
-    else:
-        print("error invalid pe magic!", pedll_oph.magic)
-        return
-    # if len(oepinit_code) < 0x200: oepinit_code.extend([0x00] * (0x200 - len(oepinit_code)))
-
-    # find necessary functions
-    FUNC_SIZE =0x400
-    codes = {"winpe_memreloc": 0, 
-        "winpe_membindiat": 0, 
-        "winpe_membindtls": 0,
-        "winpe_findloadlibrarya": 0, 
-        "winpe_findgetprocaddress": 0}
-    for k in codes.keys():
-        func = next(filter(lambda e : e.name == k, 
-            pedll.exported_functions))
-        codes[k] = pedll.get_content_from_virtual_address(
-            func.address, FUNC_SIZE)
-    codes['winpe_oepinit'] = oepinit_code
-
-    # write shellcode to c source file
-    with open(srcpath, "rb") as fp:
-        srctext = fp.read().decode('utf8')
-    for k, v in codes.items():
-        k = k.replace("winpe_", "")
-        _codetext = ",".join([hex(x) for x in v])
-        srctext = re.sub("g_" + k + r"_code(.+?)(\{0x90\})", 
-            "g_" + k  +  r"_code\1{" + _codetext +"}", srctext)
-    with open(targetpath, "wb") as fp:
-        fp.write(srctext.encode('utf8'))
+def make_winpe_shellcode(libwinpepath, postfix):
+    codes = dict()
+    libwinpe = shellcode.extract_coff(libwinpepath)
+    codes[f'g_oepinit_code{postfix}'] = eval(f'gen_oepinit_code{postfix}()')
+    for name, code in libwinpe.items():
+        newname = f"g_{name.replace('winpe_', '').lower()}_code{postfix}"
+        codes[newname] = code
+    return codes
 
 def debug():
-    inject_shellcodestubs("win_injectmemdll.c", 
-        "./bin/libwinpe64.dll", 
-        "./bin/_64win_injectmemdll.c")
+    codes = shellcode.extract_coff("./bin/winpe_shellcode32.obj")
     pass
 
 def main():
-    if len(sys.argv) < 4:
-        print("win_injectmemdll_shellcodestub srcpath libwinpedllpath outpath")
-        return
-    inject_shellcodestubs(sys.argv[1], 
-        sys.argv[2].replace("d.dll", ".dll"), sys.argv[3])
-    pass
+    codes = dict()
+    codes.update(make_winpe_shellcode(sys.argv[1], '32'))
+    codes.update(make_winpe_shellcode(sys.argv[2], '64')) 
+    shellcode.write_shellcode_header(codes, outpath=sys.argv[3])
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     # debug()
     main()
     pass
-
-"""
-history:
-v0.1, initial version
-v0.2, add more function for shellcode
-v0.3, x86 and x64 no need to use exe's LoadLibraryA
-v0.3.1, fix x64 attach dll crash by align stack with 0x10
-v0.3.2, add support for ordinal iat and tls 
-v0.3.3, add support for aslr
-"""

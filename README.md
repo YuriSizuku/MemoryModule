@@ -5,12 +5,17 @@ Most of the functions are inline, so that it can also be used in shellcode.
 This project is tested on `windows xp `,  `windows 7`,  `windows 10`,  `windows 11`, `linux wine`
 also the attached exe file packed by `upx` is tested.  
 
+Now you don't need to use python to compile all of them, just use pre generated shellcode.
+
 ## compile
+
+You can use `clang`, `gcc` or `tcc`  and `msvc (visual studio 2019)`to compile, 
+
+here's a example for using `clang` to compile. 
 
 ```shell
 cd ./src/memdll
-pip install lief
-pip install keystone
+make winpe_shellcode # only if you want to generate ths shellcode
 make ARCH=i686  # x86 release
 make ARCH=x86_64 # x64 release 
 make ARCH=i686 DEBUG=1 # x86 debug
