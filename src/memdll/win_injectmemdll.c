@@ -145,7 +145,7 @@ int injectdll_mem(const char *exepath,
     FILE *fp = fopen(outpath, "wb");
     fwrite(mempe_exe, 1, mempe_exesize, fp);
     fwrite(shellcode, 1, SHELLCODE_SIZE, fp);
-    for(int i=0;i<padding;i++) fputc(0x0, fp);
+    for(size_t i=0;i<padding;i++) fputc(0x0, fp);
     fwrite(mempe_dll, 1, mempe_dllsize, fp);
     if(overlay_exe) fwrite(overlay_exe, 1, overlay_exesize, fp);
     fclose(fp);

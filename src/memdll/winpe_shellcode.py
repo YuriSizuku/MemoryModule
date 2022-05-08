@@ -9,8 +9,9 @@ def gen_oepinit_code32():
     ks = Ks(KS_ARCH_X86, KS_MODE_32)
     code_str = f"""
     // for relative address, get the base of addr
+    push ebx;
     call getip; 
-    lea ebx, [eax-5];
+    lea ebx, [eax-6];
 
     // get the imagebase
     mov eax, 0x30; // to avoid relative addressing
@@ -74,8 +75,9 @@ def gen_oepinit_code32():
     call eax;
 
     // jmp to origin oep
-    mov eax, [ebx+exeoeprva];
+    mov eax, [ebx + exeoeprva];
     add eax, edi;
+    pop ebx;
     jmp eax;
 
     getip:
@@ -189,16 +191,81 @@ def gen_oepinit_code64():
     # print("payload: ", [hex(x) for x in payload])
     return payload
 
+def gen_oepinitstatic_code32():
+    ks = Ks(KS_ARCH_X86, KS_MODE_32)
+    code_str = f"""
+    push eax
+    push ebx
+    call getip; 
+    lea ebx, [eax-7];
+    mov eax, [ebx + dllnameva];
+    push eax;
+    mov eax, [ebx + loadlibraryva]
+    call eax;
+    mov eax, [ebx + retva];
+    mov edi, eax;
+    pop ebx;
+    pop eax;
+    jmp edi;
+
+    getip:
+    mov eax, [esp]
+    ret
+    
+    retva:nop;nop;nop;nop;
+    dllnameva:nop;nop;nop;nop;
+    loadlibraryva:nop;nop;nop;nop;
+    """
+    payload, _ = ks.asm(code_str)
+    return payload
+
+def gen_oepinitstatic_code64():
+    ks = Ks(KS_ARCH_X86, KS_MODE_64)
+    code_str = f"""
+    push rax;
+    push rbx;
+    push rcx;
+    push rdx;
+    call getip; 
+    lea rbx, [rax-9];
+    sub rsp, 0x28;
+    mov rcx, [rbx + dllnameva];
+    mov rax, [rbx + loadlibraryva]
+    call rax;
+    add rsp, 0x28;
+    mov rax, [rbx + retva];
+    mov r15, rax;
+    pop rdx;
+    pop rcx;
+    pop rbx;
+    pop rax;
+    jmp r15;
+
+    getip:
+    mov rax, [rsp];
+    ret;
+    
+    retva:nop;nop;nop;nop;nop;nop;nop;nop;
+    dllnameva:nop;nop;nop;nop;nop;nop;nop;nop;
+    loadlibraryva:nop;nop;nop;nop;nop;nop;nop;nop;
+    """
+    payload, _ = ks.asm(code_str)
+    return payload
+
 def make_winpe_shellcode(libwinpepath, postfix):
     codes = dict()
     libwinpe = shellcode.extract_coff(libwinpepath)
+    # for static inject dll into exe oepinit code
     codes[f'g_oepinit_code{postfix}'] = eval(f'gen_oepinit_code{postfix}()')
+    # for dynamic inject dll into exe oepint code 
+    codes[f'g_oepinitstatic_code{postfix}'] = eval(f'gen_oepinitstatic_code{postfix}()')
     for name, code in libwinpe.items():
         newname = f"g_{name.replace('winpe_', '').lower()}_code{postfix}"
         codes[newname] = code
     return codes
 
 def debug():
+    gen_oepinitstatic_code64()
     codes = shellcode.extract_coff("./bin/winpe_shellcode32.obj")
     pass
 

@@ -1,3 +1,3 @@
 [submodule "util"]
 	path = util
-	url = git@github.com:YuriSizuku/ReverseUtil.git
+	url = https://github.com/YuriSizuku/ReverseUtil.git
