@@ -5,7 +5,7 @@
 # make winpe_shellcode
 # make ARCH=i686 CC=clang && make ARCH=i686 CC=clang DEBUG=1
 # make ARCH=x86_64 CC=clang && make ARCH=x86_64 CC=clang DEBUG=1
-# make ARCH=i686 CC=tcc && make ARCH=i686 CC=tccDEBUG=1
+# make ARCH=i686 CC=tcc && make ARCH=i686 CC=tcc DEBUG=1
 # make ARCH=x86_64 CC=tcc && make ARCH=x86_64 CC=tcc DEBUG=1
 # make ARCH=i686 CC=gcc && make ARCH=i686 CC=gcc DEBUG=1
 
@@ -120,7 +120,7 @@ win_injectmemdll: libwinpe
 # this function only support clang
 winpe_shellcode: libwinpe.c
 	@echo \#\#building $@ ...
-	clang -c -O3 $< \
+	clang -c -Os $< \
 		-o $(PREFIX)/$@32.obj \
 		-target i686-pc-windows-msvc \
 		-D _CRT_SECURE_NO_DEPRECATE\
@@ -128,7 +128,7 @@ winpe_shellcode: libwinpe.c
 		-fdata-sections\
 		-Wno-undefined-inline\
 		$(INCS)
-	clang -c -O3 $< \
+	clang -c -Os $< \
 		-o $(PREFIX)/$@64.obj \
 		-target x86_64-pc-windows-msvc \
 		-D _CRT_SECURE_NO_DEPRECATE\
