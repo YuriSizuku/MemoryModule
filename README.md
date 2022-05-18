@@ -20,9 +20,9 @@ Also it support `cross-compile` on linux such as `codespaces`.
 
 ### compile on windows
 
-You can use `clang`, `gcc` or `tcc`  and `msvc (visual studio 2019)`to compile, 
+You can use `clang`, `gcc` or `tcc`  and `msvc (visual studio 2019)`to compile,  
 
-here's a example for using `clang` to compile. 
+here's a example for using `clang` to compile.  
 
 ```shell
 git clone https://github.com/YuriSizuku/MemoryModule.git --recursive
@@ -46,7 +46,8 @@ make ARCH=i686 CC=i686-w64-mingw32-gcc # mingw x86 release
 make ARCH=x86_64 CC=x86_64-w64-mingw32-gcc # mingw x64 release
 ```
 
-If you want to develop on `codespaces`, here's the `c_cpp_properties.json` on vscode.
+If you want to develop on `codespaces`, here's the `c_cpp_properties.json` on vscode.  
+
 ```json
 {
     "configurations": [
@@ -101,7 +102,7 @@ win_injectmemdll.exe exepath dllpath [outpath]
 
 ## MemoryModule API
 
-These functions are essential to load memory module in windows. 
+These functions are essential to load memory module in windows.  
 
 ```c
 /*
