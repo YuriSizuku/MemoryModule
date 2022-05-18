@@ -79,8 +79,8 @@ ifeq ($(shell echo ${OS}), Windows_NT)
 DLL_EXT=.dll
 EXE_EXT=.exe
 else
-DLL_EXT?=.so
-EXE_EXT?=
+DLL_EXT?=.dll
+EXE_EXT?=.exe
 endif
 
 # other config

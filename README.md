@@ -1,20 +1,32 @@
-# MemoryModule
-A tool to parse and load module in memory, as well as attach a DLL in EXE.
+# MemoryModule  
+
+![GitHub tag (latest by date)](https://img.shields.io/github/v/tag/yurisizuku/memorymodule?color=green&label=MemoryModule)  
+
+☘️ A tool to parse and load module in memory, as well as attach a DLL in EXE.
 Most of the functions are inline, so that it can also be used in shellcode.
 
-This project is tested on `windows xp `,  `windows 7`,  `windows 10`,  `windows 11`, `linux wine`
-also the attached exe file packed by `upx` is tested.  
+**compatible list:**
 
-Now you don't need to use python to compile all of them, just use pre generated shellcode.
+- [x] windows xp
+- [x] windows 7
+- [x] windows 8
+- [x] windows 10
+- [x] linux wine
 
-## compile
+Now you don't need to use python to compile all of them, just use pre generated shellcode.  
+Also it support `cross-compile` on linux such as `codespaces`.
+
+## Compile
+
+### compile on windows
 
 You can use `clang`, `gcc` or `tcc`  and `msvc (visual studio 2019)`to compile, 
 
 here's a example for using `clang` to compile. 
 
 ```shell
-cd ./src/memdll
+git clone https://github.com/YuriSizuku/MemoryModule.git --recursive
+cd ./MemoryModule/src/memdll
 make winpe_shellcode # only if you want to generate ths shellcode
 make ARCH=i686  # x86 release
 make ARCH=x86_64 # x64 release 
@@ -22,7 +34,41 @@ make ARCH=i686 DEBUG=1 # x86 debug
 make ARCH=x86_64 DEBUG=1 # x64 debug
 ```
 
-## usage
+### compile on linux
+
+You can also use `mingw` to compile on `linux` without generating shellcode by python.  
+
+```shell
+sudo apt-get install mingw-w64
+git clone https://github.com/YuriSizuku/MemoryModule.git --recursive
+cd ./MemoryModule/src/memdll
+make ARCH=i686 CC=i686-w64-mingw32-gcc # mingw x86 release
+make ARCH=x86_64 CC=x86_64-w64-mingw32-gcc # mingw x64 release
+```
+
+If you want to develop on `codespaces`, here's the `c_cpp_properties.json` on vscode.
+```json
+{
+    "configurations": [
+        {
+            "name": "Linux",
+            "includePath": [
+                "${workspaceFolder}/**",
+                "${workspaceFolder}/util/include/**"
+            ],
+            "defines": ["WINPE_IMPLEMENTATION", "WINPE_NOASM"],
+            "compilerPath": "/usr/bin/i686-w64-mingw32-gcc",
+            "cStandard": "c99",
+            "cppStandard": "c++11",
+            "intelliSenseMode": "windows-gcc-x86"
+        }
+    ],
+    "version": 4
+}
+
+```
+
+## Usage
 
 ### load DLL in memory
 
@@ -47,15 +93,13 @@ winpe_memFreeLibrary(memdll);
 free(mempe);
 ```
 
-
-
 ### attach DLL in exe
 
 ```shell
 win_injectmemdll.exe exepath dllpath [outpath]
 ```
 
-## memory module API
+## MemoryModule API
 
 These functions are essential to load memory module in windows. 
 
@@ -134,13 +178,13 @@ inline size_t winpe_membindtls(void *mempe, DWORD reason);
 
 See `winpe.h`  for parsing and loading PE structure in detail.
 
-## known issues
+## Known issues
 
-* ~~attach x64 DLL to exe crash on calling some windows API~~  
+- [x] attach x64 DLL to exe crash on calling some windows API
   problem occured by `movaps xmm0, xmmword ptr ss:[rsp]`
-  fixed by stack memory align with 0x10
+  fixed by stack memory align with 0x10  
 
-## todo
+## Todo
 
-* ~~TLS initialize support~~ finished, but not tested, because I didn't find DLL with TLS example.
-* ~~support ASLR~~ finished
+- [x] TLS initialize support, finished, but not tested, because I didn't find DLL with TLS example.  
+- [x] support ASLR finished  
