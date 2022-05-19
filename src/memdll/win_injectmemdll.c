@@ -185,9 +185,19 @@ void test_exp()
     printf("winpe_findkernel32, winpe_findmodulea(kernel32) %p passed!\n", hmod);
     hmod3 = winpe_findmodulea("invalid.dll");
     assert(hmod3==NULL);
+
+    // test some weird function
+    hmod = LoadLibraryA("kernel32.dll");
+    void* func = winpe_memGetProcAddress(hmod, "GetProcessMitigationPolicy");
+    assert(func == GetProcAddress(hmod, "GetProcessMitigationPolicy"));
+    printf("winpe_memGetProcAddress, GetProcessMitigationPolicy %p passed!\n", func);
+    
+    // test findexp and forwardexp
+    hmod = LoadLibraryA("kernel32.dll");
     test_getfunc(hmod, "LoadLibraryA");
     test_getfunc(hmod, "InitializeSListHead");
     test_getfunc(hmod, "GetSystemTimeAsFileTime");
+
     printf("test_exp passed!\n\n");
 }
 
