@@ -26,8 +26,8 @@ here's a example for using `clang` to compile.
 
 ```shell
 git clone https://github.com/YuriSizuku/MemoryModule.git --recursive
-cd ./MemoryModule/src/memdll
-make winpe_shellcode # only if you want to generate ths shellcode
+cd MemoryModule/project/win_memdll
+make winmemdll_shellcode # only if you want to generate ths shellcode
 make ARCH=i686  # x86 release
 make ARCH=x86_64 # x64 release 
 make ARCH=i686 DEBUG=1 # x86 debug
@@ -41,7 +41,7 @@ You can also use `mingw` to compile on `linux` without generating shellcode by p
 ```shell
 sudo apt-get install mingw-w64
 git clone https://github.com/YuriSizuku/MemoryModule.git --recursive
-cd ./MemoryModule/src/memdll
+cd MemoryModule/project/win_memdll
 make ARCH=i686 CC=i686-w64-mingw32-gcc # mingw x86 release
 make ARCH=x86_64 CC=x86_64-w64-mingw32-gcc # mingw x64 release
 ```
@@ -52,10 +52,10 @@ If you want to develop on `codespaces`, here's the `c_cpp_properties.json` on vs
 {
     "configurations": [
         {
-            "name": "Linux",
+            "name": "Linux gcc i686 ",
             "includePath": [
                 "${workspaceFolder}/**",
-                "${workspaceFolder}/util/include/**"
+                "${workspaceFolder}/depend/reversetool/src/c/include/**"
             ],
             "defines": ["WINPE_IMPLEMENTATION", "WINPE_NOASM"],
             "compilerPath": "/usr/bin/i686-w64-mingw32-gcc",

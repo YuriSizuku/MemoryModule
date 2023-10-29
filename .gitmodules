@@ -1,3 +1,3 @@
-[submodule "util"]
-	path = util
-	url = https://github.com/YuriSizuku/ReverseUtil.git
+[submodule "depend/reversetool"]
+	path = depend/reversetool
+	url = https://github.com/YuriSizuku/ReverseTool.git
