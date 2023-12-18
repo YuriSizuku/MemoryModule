@@ -1,8 +1,8 @@
 import sys
 from keystone import *
 
-sys.path.append("../../depend/reversetool/src/py")
-import libshellcode as shellcode
+sys.path.append("../../depend/reversetool/src")
+import wincoff as shellcode
 
 def gen_oepinit_code32():
     ks = Ks(KS_ARCH_X86, KS_MODE_32)

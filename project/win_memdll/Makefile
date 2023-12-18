@@ -14,7 +14,7 @@ ARCH?=i686
 PREFIX?=./build
 
 CC:=clang
-INCS:=-I../../src/include -I../../depend/reversetool/src/c/include
+INCS:=-I../../src/include -I../../depend/reversetool/src
 LIBDIRS:=
 LIBS:=-luser32 -lgdi32
 CFLAGS:=-ffunction-sections\
