@@ -1,9 +1,9 @@
 # MemoryModule  
 
-![GitHub tag (latest by date)](https://img.shields.io/github/v/tag/yurisizuku/memorymodule?color=green&label=MemoryModule)  
+![GitHub tag (latest by date)](https://img.shields.io/github/v/tag/yurisizuku/memorymodule?color=green&label=MemoryModule)![GitHub Workflow Status](https://img.shields.io/github/actions/workflow/status/YuriSizuku/MemoryModule/build_wintools.yml?label=build_wintools)  
 
-☘️ A tool to parse and load module in memory, as well as attach a DLL in EXE.
-Most of the functions are inline, so that it can also be used in shellcode.
+☘️ A flexible PE loader, loading module in memory.
+Most of the functions can be inline,  compatible for shellcode.
 
 **compatible list:**
 
@@ -11,65 +11,35 @@ Most of the functions are inline, so that it can also be used in shellcode.
 - [x] windows 7
 - [x] windows 8
 - [x] windows 10
+- [x] windows 11
 - [x] linux wine
 
-Now you don't need to use python to compile all of them, just use pre generated shellcode.  
-Also it support `cross-compile` on linux such as `codespaces`.
+## build
 
-## Compile
+You can use `clang`(llvm-mingw), `gcc`(mingw-w64) or `tcc`  and `msvc`(visual studio 2022) to compile.  
 
-### compile on windows
-
-You can use `clang`, `gcc` or `tcc`  and `msvc (visual studio 2019)`to compile,  
-
-here's a example for using `clang` to compile.  
+Here's a example for using `llvm-mingw`
 
 ```shell
 git clone https://github.com/YuriSizuku/MemoryModule.git --recursive
 cd MemoryModule/project/win_memdll
-make winmemdll_shellcode # only if you want to generate ths shellcode
-make ARCH=i686  # x86 release
-make ARCH=x86_64 # x64 release 
-make ARCH=i686 DEBUG=1 # x86 debug
-make ARCH=x86_64 DEBUG=1 # x64 debug
-```
-
-### compile on linux
-
-You can also use `mingw` to compile on `linux` without generating shellcode by python.  
-
-```shell
-sudo apt-get install mingw-w64
-git clone https://github.com/YuriSizuku/MemoryModule.git --recursive
-cd MemoryModule/project/win_memdll
-make ARCH=i686 CC=i686-w64-mingw32-gcc # mingw x86 release
-make ARCH=x86_64 CC=x86_64-w64-mingw32-gcc # mingw x64 release
-```
-
-If you want to develop on `codespaces`, here's the `c_cpp_properties.json` on vscode.  
-
-```json
-{
-    "configurations": [
-        {
-            "name": "Linux gcc i686 ",
-            "includePath": [
-                "${workspaceFolder}/**",
-                "${workspaceFolder}/depend/reversetool/src/c/include/**"
-            ],
-            "defines": ["WINPE_IMPLEMENTATION", "WINPE_NOASM"],
-            "compilerPath": "/usr/bin/i686-w64-mingw32-gcc",
-            "cStandard": "c99",
-            "cppStandard": "c++11",
-            "intelliSenseMode": "windows-gcc-x86"
-        }
-    ],
-    "version": 4
-}
-
+make winmemdll_shellcode # only if you want to generate shellcode
+make winmemdll CC=i686-w64-mingw32-gcc BUILD_TYPE=32d # x86 debug
 ```
 
 ## Usage
+
+``` mermaid
+%%{init: {'theme':'forest'}}%%
+graph LR;
+f1[winpe_findspace]
+f2[winpe_memreloc];
+f3[winpe_membindiat]
+f4[winpe_membindtls]
+f5[pfnDllMain]
+
+f1 --> f2 --> f3 --> f4 --> f5
+```
 
 ### load DLL in memory
 
@@ -100,84 +70,57 @@ free(mempe);
 win_injectmemdll.exe exepath dllpath [outpath]
 ```
 
-## MemoryModule API
+### API
 
 These functions are essential to load memory module in windows.  
 
+See [winpe.h](https://github.com/YuriSizuku/ReverseTool/blob/master/src/winpe.h)  in detail.
+
 ```c
-/*
-  similar to LoadlibrayA, will call dllentry
-  will load the mempe in a valid imagebase
-    return hmodule base
+/**
+ * load the origin rawpe file in memory buffer by mem align
+ * mempe means the pe in memory alignment
+ * @param pmemsize mempe buffer size
+ * @return mempe buf
 */
-inline void* STDCALL winpe_memLoadLibrary(void *mempe);
+WINPE_API
+void* STDCALL winpe_memload_file(const char *path, size_t *pmemsize, bool_t same_align);
 
-/*
-  if imagebase==0, will load on mempe, or in imagebase
-  will load the mempe in a valid imagebase, flag as below:
-    WINPE_LDFLAG_MEMALLOC 0x1, will alloc memory to imagebase
-    WINPE_LDFLAG_MEMFIND 0x2, will find a valid space, 
-        must combined with WINPE_LDFLAG_MEMALLOC
-    return hmodule base
+/**
+ * load the mempe in a valid imagebase, will call dll entry
+ * @param imagebase if 0, will load on mempe, else in imagebase
+ * @param flag WINPE_LDFLAG_MEMALLOC 0x1, will alloc memory to imagebase
+ *             WINPE_LDFLAG_MEMFIND 0x2, will find a valid space, 
+ * @return hmodule base
 */
-inline void* STDCALL winpe_memLoadLibraryEx(void *mempe, 
-    size_t imagebase, DWORD flag,
-    PFN_LoadLibraryA pfnLoadLibraryA, 
-    PFN_GetProcAddress pfnGetProcAddress);
+WINPE_API
+void* STDCALL winpe_memLoadLibraryEx(void *mempe, size_t imagebase, DWORD flag,
+    PFN_LoadLibraryA pfnLoadLibraryA, PFN_GetProcAddress pfnGetProcAddress);
 
-/*
-   similar to FreeLibrary, will call dllentry
-     return true or false
+/**
+ * similar to FreeLibrary, will call dll entry
+ * @return True on successful
 */
-inline BOOL STDCALL winpe_memFreeLibrary(void *mempe);
+WINPE_API
+BOOL STDCALL winpe_memFreeLibrary(void *mempe);
 
-/*
-   FreeLibraryEx with VirtualFree custom function
-     return true or false
+/**
+ * similar to GetProcAddress
+ * @return function va
 */
-inline BOOL STDCALL winpe_memFreeLibraryEx(void *mempe, 
-    PFN_LoadLibraryA pfnLoadLibraryA, 
-    PFN_GetProcAddress pfnGetProcAddress);
+WINPE_API
+PROC STDCALL winpe_memGetProcAddress(void *mempe, const char *funcname);
 
-/*
-   similar to GetProcAddress
-     return function va
+/**
+ * use peb and ldr list, similar as GetModuleHandleA
+ * @return ldr module address
 */
-inline PROC STDCALL winpe_memGetProcAddress(
-    void *mempe, const char *funcname);
-
-// mempe internal functions
-/*
-  load the origin rawpe in memory buffer by mem align
-    return memsize
-*/
-inline size_t winpe_memload(const void *rawpe, size_t rawsize, 
-    void *mempe, size_t memsize, bool_t same_align);
-
-
-/*
-  realoc the addrs for the mempe addr as image base
-    return realoc count
-*/
-inline size_t winpe_memreloc(void *mempe, size_t newimagebase);
-
-/*
-  load the iat for the mempe
-    return iat count
-*/
-inline size_t winpe_membindiat(void *mempe, 
-    PFN_LoadLibraryA pfnLoadLibraryA, 
-    PFN_GetProcAddress pfnGetProcAddress);
-
-/*
-  exec the tls callbacks for the mempe, before dll oep load
-  reason is for function PIMAGE_TLS_CALLBACK
-    return tls count
-*/
-inline size_t winpe_membindtls(void *mempe, DWORD reason);
+WINPE_API
+void* STDCALL winpe_findmodulea(const char *modulename)
+{
+    return winpe_findmoduleaex(NULL, modulename);
+}
 ```
-
-See `winpe.h`  for parsing and loading PE structure in detail.
 
 ## Known issues
 

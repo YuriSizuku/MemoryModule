@@ -1,15 +1,13 @@
-/* 
-A tool to attach a dll inside a pe file
-    v0.3.5, developed by devseed
+/**
+ * Attach dll in exe as memory module
+ *   v0.3.6, developed by devseed
 */
 
 #include <stdio.h>
-#include <assert.h>
 #define WINPE_IMPLEMENTATION
-#ifndef WINPE_NOASM
 #define WINPE_NOASM
-#endif
 #include "winpe.h"
+#include <assert.h>
 
 #define DUMP(path, addr, size)\
    FILE *_fp = fopen(path, "wb");\
@@ -68,14 +66,10 @@ void _makeoepcode(void *shellcode,
     *pfindgetprocaddress = shellcoderva + findgetprocaddress_start;
 
     // copy to the target
-    memcpy(shellcode , 
-        g_oepinit_code, sizeof(g_oepinit_code));
-    memcpy((uint8_t*)shellcode + memreloc_start, 
-        g_memreloc_code, sizeof(g_memreloc_code));
-    memcpy((uint8_t*)shellcode + membindiat_start,
-        g_membindiat_code, sizeof(g_membindiat_code));
-    memcpy((uint8_t*)shellcode + membindtls_start,
-        g_membindtls_code, sizeof(g_membindtls_code));
+    memcpy(shellcode , g_oepinit_code, sizeof(g_oepinit_code));
+    memcpy((uint8_t*)shellcode + memreloc_start, g_memreloc_code, sizeof(g_memreloc_code));
+    memcpy((uint8_t*)shellcode + membindiat_start, g_membindiat_code, sizeof(g_membindiat_code));
+    memcpy((uint8_t*)shellcode + membindtls_start, g_membindtls_code, sizeof(g_membindtls_code));
     memcpy((uint8_t*)shellcode + findloadlibrarya_start,
         g_findloadlibrarya_code, sizeof(g_findloadlibrarya_code));
     memcpy((uint8_t*)shellcode + findgetprocaddress_start,
@@ -86,8 +80,7 @@ void _makeoepcode(void *shellcode,
 size_t _sectpaddingsize(void *mempe, void *mempe_dll, size_t align)
 {
     PIMAGE_DOS_HEADER pDosHeader = (PIMAGE_DOS_HEADER)mempe;
-    PIMAGE_NT_HEADERS  pNtHeader = (PIMAGE_NT_HEADERS)
-        ((uint8_t*)mempe + pDosHeader->e_lfanew);
+    PIMAGE_NT_HEADERS  pNtHeader = (PIMAGE_NT_HEADERS)((uint8_t*)mempe + pDosHeader->e_lfanew);
     PIMAGE_FILE_HEADER pFileHeader = &pNtHeader->FileHeader;
     PIMAGE_OPTIONAL_HEADER pOptHeader = &pNtHeader->OptionalHeader;
     size_t _v = (pOptHeader->SizeOfImage + SHELLCODE_SIZE) % align;
@@ -117,16 +110,14 @@ int injectdll_mem(const char *exepath,
     overlay_exe = winpe_overlayload_file(exepath, &overlay_exesize);
     void *mempe = mempe_exe;
     PIMAGE_DOS_HEADER pDosHeader = (PIMAGE_DOS_HEADER)mempe;
-    PIMAGE_NT_HEADERS  pNtHeader = (PIMAGE_NT_HEADERS)
-        ((uint8_t*)mempe + pDosHeader->e_lfanew);
+    PIMAGE_NT_HEADERS  pNtHeader = (PIMAGE_NT_HEADERS)((uint8_t*)mempe + pDosHeader->e_lfanew);
     PIMAGE_FILE_HEADER pFileHeader = &pNtHeader->FileHeader;
     PIMAGE_OPTIONAL_HEADER pOptHeader = &pNtHeader->OptionalHeader;
 
     // append section header to exe
     size_t align = sizeof(size_t) > 4 ? 0x10000: 0x1000; 
     size_t padding = _sectpaddingsize(mempe_exe, mempe_dll, align);
-    secth.Characteristics = IMAGE_SCN_MEM_READ | 
-        IMAGE_SCN_MEM_WRITE | IMAGE_SCN_MEM_EXECUTE;
+    secth.Characteristics = IMAGE_SCN_MEM_READ | IMAGE_SCN_MEM_WRITE | IMAGE_SCN_MEM_EXECUTE;
     secth.Misc.VirtualSize = (DWORD)(SHELLCODE_SIZE + padding + mempe_dllsize);
     secth.SizeOfRawData = (DWORD)(SHELLCODE_SIZE + padding + mempe_dllsize);
     strcpy((char*)secth.Name, ".module");
@@ -162,7 +153,7 @@ int main(int argc, char *argv[])
     if(argc < 3)
     {
         printf("usage: winmemdll exepath dllpath [outpath]\n");
-        printf("v0.3.5, developed by devseed\n");
+        printf("v0.3.6, developed by devseed\n");
         return 0;
     }
     char outpath[MAX_PATH];
@@ -171,14 +162,15 @@ int main(int argc, char *argv[])
     return injectdll_mem(argv[1], argv[2], outpath);
 }
 
-/*
-history:
-v0.1, initial version
-v0.2, add more function for shellcode
-v0.3, x86 and x64 no need to use exe's LoadLibraryA
-v0.3.1, fix x64 attach dll crash by align stack with 0x10
-v0.3.2, add support for ordinal iat and tls 
-v0.3.3, add support for aslr
-v0.3.4, replace win_injectmemdll_shellcodestub with make shellocde from obj
-v0.3.5, this can be used without python
+/**
+ * history:
+ * v0.1, initial version
+ * v0.2, add more function for shellcode
+ * v0.3, x86 and x64 no need to use exe's LoadLibraryA
+ * v0.3.1, fix x64 attach dll crash by align stack with 0x10
+ * v0.3.2, add support for ordinal iat and tls 
+ * v0.3.3, add support for aslr
+ * v0.3.4, replace win_injectmemdll_shellcodestub with make shellocde from obj
+ * v0.3.5, this can be used without python
+ * v0.3.6, use llvm-mingw to generate shellcode instead of clang
 */

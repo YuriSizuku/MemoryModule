@@ -263,11 +263,6 @@ def make_winpe_shellcode(libwinpepath, postfix):
         codes[newname] = code
     return codes
 
-def debug():
-    gen_oepinitstatic_code64()
-    codes = shellcode.extract_coff("./bin/winpe_shellcode32.obj")
-    pass
-
 def main():
     codes = dict()
     codes.update(make_winpe_shellcode(sys.argv[1], '32'))
@@ -275,6 +270,4 @@ def main():
     shellcode.write_shellcode_header(codes, outpath=sys.argv[3])
 
 if __name__ == '__main__':
-    # debug()
     main()
-    pass
