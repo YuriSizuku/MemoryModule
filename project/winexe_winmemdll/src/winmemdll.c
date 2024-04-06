@@ -9,11 +9,6 @@
 #include "winpe.h"
 #include <assert.h>
 
-#define DUMP(path, addr, size)\
-   FILE *_fp = fopen(path, "wb");\
-   fwrite(addr, 1, size, _fp);\
-   fclose(_fp)
-
 // these functions are stub function, will be filled by python
 #include "winmemdll_shellcode.h"
 #define FUNC_SIZE 0x400
