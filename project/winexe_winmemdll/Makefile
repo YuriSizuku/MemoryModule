@@ -1,5 +1,7 @@
 # build example, tested in linux 10.0.0-3, gcc 12, wine-9.0
-# make winmemdll_shellcode CC=x86_64-w64-mingw32-gcc
+# make winmemdll_shellcode CC=x86_64-w64-mingw32-gcc BUILD_TYPE=32
+# make winmemdll_shellcode CC=i686-w64-mingw32-clang BUILD_TYPE=32
+# make winmemdll_shellcode CC=x86_64-w64-mingw32-clang BUILD_TYPE=64
 # make winmemdll winmemdll_test CC=i686-w64-mingw32-gcc BUILD_TYPE=32d
 # make winmemdll winmemdll_test CC=x86_64-w64-mingw32-gcc BUILD_TYPE=64d
 
