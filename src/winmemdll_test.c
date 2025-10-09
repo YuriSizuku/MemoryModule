@@ -21,8 +21,8 @@ void test_memdll(char *dllpath)
     
     size_t targetaddr = sizeof(size_t) > 4 ? 0x140030000: 0x290000;
     memdll = winpe_memLoadLibraryEx(memdll, targetaddr, 
-        WINPE_LDFLAG_MEMALLOC, (PFN_LoadLibraryA)winpe_findloadlibrarya(), 
-        (PFN_GetProcAddress)winpe_memGetProcAddress);
+        WINPE_LDFLAG_MEMALLOC, (T_LoadLibraryA)winpe_findloadlibrarya(), 
+        (T_GetProcAddress)winpe_memGetProcAddress);
     printf("[test_memdll] winpe_memLoadLibraryEx %p\n", memdll);
     // assert((size_t)memdll==targetaddr);
     assert(memdll!=0);

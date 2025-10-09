@@ -34,7 +34,7 @@ LDFLAGS= # tcc can not remove at at stdcall in i686
 else
 endif
 
-all: prepare winmemdll
+all: prepare winmemdll winmemdll_test
 
 clean:
 	@rm -rf $(BUILD_DIR)/*winmemdll*
